@@ -1,0 +1,537 @@
+// ClubHub — Phase 1 Prisma Schema
+// Movax Technologies Ltd
+//
+// Design notes:
+// - Every tenant-scoped model carries organizationId (indexed, required).
+// - cuid() is used for IDs: sortable-ish, collision-resistant, URL-safe,
+//   no coordination needed across services (unlike auto-increment).
+// - Money is stored as Int (minor units / pesewas) to avoid floating-point
+//   rounding errors in financial calculations. 1 GHS = 100 pesewas.
+// - onDelete: Restrict is used on financial records to prevent accidental
+//   cascading deletes of payment history; Cascade is used for genuinely
+//   dependent child records (e.g. RefreshToken belongs entirely to User).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// TENANCY ROOT
+// ============================================================
+
+model Organization {
+  id            String   @id @default(cuid())
+  name          String
+  slug          String   @unique // used for subdomain / URLs, e.g. clubhub.app/rotary-accra
+  type          OrgType  @default(OTHER)
+  logoUrl       String?
+  primaryColor  String? // brand color for member-facing PDF receipts, cards
+  contactEmail  String
+  contactPhone  String?
+  address       String?
+
+  // subscription / billing
+  setupFeePaid       Boolean            @default(false)
+  subscriptionPlan   SubscriptionPlan   @default(TRIAL)
+  subscriptionStatus SubscriptionStatus @default(ACTIVE)
+  subscriptionEndsAt DateTime?
+
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  memberships       Membership[]
+  invitations       Invitation[]
+  roles             Role[]
+  paymentCategories PaymentCategory[]
+  payments          Payment[]
+  receipts          Receipt[]
+  projects          Project[]
+  events            Event[]
+  announcements     Announcement[]
+  auditLogs         AuditLog[]
+
+  @@index([slug])
+  @@map("organizations")
+}
+
+enum OrgType {
+  ROTARY
+  ROTARACT
+  LIONS
+  LEO
+  CHURCH
+  NGO
+  ALUMNI
+  PROFESSIONAL_BODY
+  COMMUNITY_ASSOCIATION
+  FOUNDATION
+  OTHER
+}
+
+enum SubscriptionPlan {
+  TRIAL
+  MONTHLY
+  ANNUAL
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAST_DUE
+  SUSPENDED
+  CANCELLED
+}
+
+// ============================================================
+// IDENTITY — Users are global; Membership scopes them to an org
+// ============================================================
+
+// A User can belong to multiple organizations (e.g. one person in two clubs),
+// each represented by a separate Membership with its own role/status.
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  phone         String?   @unique
+  passwordHash  String
+  firstName     String
+  lastName      String
+  avatarUrl     String?
+  isEmailVerified Boolean @default(false)
+  isActive      Boolean   @default(true)
+  lastLoginAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  memberships    Membership[]
+  refreshTokens  RefreshToken[]
+  otpCodes       OtpCode[]
+  auditLogs      AuditLog[]
+  sentInvitations Invitation[]
+
+  @@map("users")
+}
+
+// The core tenant-scoped join: a User's presence, role, and membership
+// number within a specific Organization.
+model Membership {
+  id               String   @id @default(cuid())
+  organizationId   String
+  userId           String
+  roleId           String
+
+  membershipNumber String   // e.g. "RCA-2026-0143" — unique within an org
+  status           MembershipStatus @default(ACTIVE)
+  joinedAt         DateTime @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role         Role         @relation(fields: [roleId], references: [id], onDelete: Restrict)
+
+  payments             Payment[]
+  eventRegistrations   EventRegistration[]
+  attendanceRecords    Attendance[]
+  projectContributions ProjectContribution[]
+
+  @@unique([organizationId, membershipNumber])
+  @@unique([organizationId, userId]) // one membership per user per org
+  @@index([organizationId, status])
+  @@map("memberships")
+}
+
+enum MembershipStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  ALUMNI
+}
+
+// ============================================================
+// INVITATIONS — a person isn't a User/Membership until they accept
+// ============================================================
+
+model Invitation {
+  id              String   @id @default(cuid())
+  organizationId  String
+  email           String
+  roleId          String
+  invitedByUserId String
+
+  tokenHash  String           @unique // raw token emailed to invitee; only the hash is stored
+  status     InvitationStatus @default(PENDING)
+  expiresAt  DateTime
+  acceptedAt DateTime?
+  createdAt  DateTime         @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  role         Role         @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  invitedBy    User         @relation(fields: [invitedByUserId], references: [id], onDelete: Restrict)
+
+  // A given email can have multiple historical (expired/revoked) invitations,
+  // but only one PENDING one at a time — enforced in service logic (Prisma
+  // can't express "unique among rows matching a condition" directly).
+  @@index([organizationId, email, status])
+  @@map("invitations")
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  REVOKED
+}
+
+// ============================================================
+// ROLES & PERMISSIONS — per-organization, not hardcoded
+// ============================================================
+
+model Role {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String   // e.g. "President", "Treasurer" — customizable per org
+  isDefault      Boolean  @default(false) // seeded default vs custom-created
+  createdAt      DateTime @default(now())
+
+  organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  memberships     Membership[]
+  rolePermissions RolePermission[]
+  invitations     Invitation[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@map("roles")
+}
+
+// Permissions are global (not per-org) — a fixed catalog the platform defines,
+// e.g. "payments:approve", "members:invite", "events:create".
+model Permission {
+  id          String @id @default(cuid())
+  key         String @unique // "payments:approve"
+  description String
+
+  rolePermissions RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+// ============================================================
+// AUTH SUPPORT
+// ============================================================
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  userId    String
+  tokenHash String   @unique // SHA-256 hash; raw token never stored
+  familyId  String   // groups rotated tokens; theft detection revokes whole family
+  revoked   Boolean  @default(false)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([familyId])
+  @@map("refresh_tokens")
+}
+
+model OtpCode {
+  id        String   @id @default(cuid())
+  userId    String
+  code      String
+  purpose   OtpPurpose
+  attempts  Int      @default(0)
+  expiresAt DateTime
+  consumedAt DateTime?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, purpose])
+  @@map("otp_codes")
+}
+
+enum OtpPurpose {
+  EMAIL_VERIFICATION
+  PASSWORD_RESET
+  LOGIN_2FA
+}
+
+// ============================================================
+// PAYMENTS
+// ============================================================
+
+model PaymentCategory {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String   // "Monthly Dues", "Annual Dues", "Foundation Donation"...
+  type           PaymentCategoryType
+  isRecurring    Boolean  @default(false)
+  defaultAmount  Int?     // minor units; null if custom amount per payment
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  payments     Payment[]
+
+  @@index([organizationId])
+  @@map("payment_categories")
+}
+
+enum PaymentCategoryType {
+  DUES
+  DONATION
+  PROJECT_CONTRIBUTION
+  FUNDRAISING
+  EVENT_FEE
+  LEVY
+  CUSTOM
+}
+
+model Payment {
+  id             String   @id @default(cuid())
+  organizationId String
+  membershipId   String
+  categoryId     String
+  projectId      String? // set when category.type === PROJECT_CONTRIBUTION; links payment to the project it funds
+
+  amount         Int      // minor units (pesewas)
+  currency       String   @default("GHS")
+  status         PaymentStatus @default(PENDING)
+  gateway        PaymentGateway
+  gatewayRef     String   @unique // Paystack transaction reference, or "MANUAL-<cuid>" for offline entries
+  recordedByUserId String? // set only for MANUAL payments — who at the org recorded this cash/offline entry
+  notes          String?  // e.g. "Cash collected at Feb general meeting" — MANUAL entries only
+  paidAt         DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  membership   Membership      @relation(fields: [membershipId], references: [id], onDelete: Restrict)
+  category     PaymentCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  project      Project?        @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  receipt      Receipt?
+
+  @@index([organizationId, status])
+  @@index([membershipId])
+  @@map("payments")
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  REFUNDED
+}
+
+enum PaymentGateway {
+  PAYSTACK
+  FLUTTERWAVE
+  HUBTEL
+  MANUAL
+}
+
+model Receipt {
+  id             String   @id @default(cuid())
+  organizationId String
+  paymentId      String   @unique
+  receiptNumber  String   // e.g. "RCA-RCPT-000482"
+  pdfUrl         String   // Cloudinary URL
+  qrCodeData     String   // encoded verification payload
+  issuedAt       DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  payment      Payment      @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, receiptNumber])
+  @@map("receipts")
+}
+
+// ============================================================
+// PROJECTS
+// ============================================================
+
+model Project {
+  id             String   @id @default(cuid())
+  organizationId String
+  title          String
+  description    String
+  budget         Int?     // minor units
+  raisedAmount   Int      @default(0)
+  status         ProjectStatus @default(PLANNING)
+  startDate      DateTime?
+  endDate        DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization  Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contributions ProjectContribution[]
+  milestones    ProjectMilestone[]
+  payments      Payment[]
+
+  @@index([organizationId, status])
+  @@map("projects")
+}
+
+enum ProjectStatus {
+  PLANNING
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+model ProjectMilestone {
+  id          String    @id @default(cuid())
+  projectId   String
+  title        String
+  dueDate      DateTime?
+  completedAt  DateTime?
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@map("project_milestones")
+}
+
+model ProjectContribution {
+  id           String   @id @default(cuid())
+  projectId    String
+  membershipId String
+  amount       Int      // minor units
+  createdAt    DateTime @default(now())
+
+  project    Project    @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  membership Membership @relation(fields: [membershipId], references: [id], onDelete: Restrict)
+
+  @@index([projectId])
+  @@map("project_contributions")
+}
+
+// ============================================================
+// EVENTS & ATTENDANCE
+// ============================================================
+
+model Event {
+  id             String   @id @default(cuid())
+  organizationId String
+  title          String
+  description    String?
+  location       String?
+  startsAt       DateTime
+  endsAt         DateTime?
+  capacity       Int?
+  ticketPrice    Int?     // minor units; null if free
+  qrCheckinCode  String   @unique // static code for this event's QR check-in
+  createdAt      DateTime @default(now())
+
+  organization  Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  registrations EventRegistration[]
+  attendance    Attendance[]
+
+  @@index([organizationId, startsAt])
+  @@map("events")
+}
+
+model EventRegistration {
+  id           String   @id @default(cuid())
+  eventId      String
+  membershipId String
+  status       RsvpStatus @default(REGISTERED)
+  createdAt    DateTime @default(now())
+
+  event      Event      @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  membership Membership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, membershipId])
+  @@map("event_registrations")
+}
+
+enum RsvpStatus {
+  REGISTERED
+  CONFIRMED
+  CANCELLED
+  ATTENDED
+}
+
+// Generic attendance — covers both event attendance and regular club
+// meeting attendance (Event relation optional for the latter).
+model Attendance {
+  id             String   @id @default(cuid())
+  organizationId String
+  membershipId   String
+  eventId        String?
+  method         AttendanceMethod @default(MANUAL)
+  checkedInAt    DateTime @default(now())
+
+  membership Membership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  event      Event?     @relation(fields: [eventId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, checkedInAt])
+  @@map("attendance")
+}
+
+enum AttendanceMethod {
+  MANUAL
+  QR_CODE
+}
+
+// ============================================================
+// COMMUNICATION
+// ============================================================
+
+model Announcement {
+  id             String   @id @default(cuid())
+  organizationId String
+  title          String
+  body           String
+  sentPush       Boolean  @default(false)
+  sentEmail      Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt])
+  @@map("announcements")
+}
+
+// ============================================================
+// AUDIT LOG
+// ============================================================
+
+model AuditLog {
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String?
+  action         String   // e.g. "payment.approved", "member.role_changed"
+  entityType     String   // "Payment", "Membership", ...
+  entityId       String
+  beforeData     Json?
+  afterData      Json?
+  ipAddress      String?
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, createdAt])
+  @@index([entityType, entityId])
+  @@map("audit_logs")
+}
