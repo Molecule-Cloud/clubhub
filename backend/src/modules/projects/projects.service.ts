@@ -1,4 +1,4 @@
-import { prisma } from "../../lib/prisma";
+import { prisma, Prisma, scopedCreateData } from "../../lib/prisma";
 import { ApiError } from "../../utils/ApiError";
 
 interface CreateProjectInput {
@@ -11,13 +11,13 @@ interface CreateProjectInput {
 
 export async function createProject(input: CreateProjectInput) {
   return prisma.project.create({
-    data: {
+    data: scopedCreateData<Prisma.ProjectUncheckedCreateInput>({
       title: input.title,
       description: input.description,
       budget: input.budget,
       startDate: input.startDate ? new Date(input.startDate) : undefined,
       endDate: input.endDate ? new Date(input.endDate) : undefined,
-    } as never, // organizationId injected by the tenant-scoping extension on create
+    }), // organizationId injected by the tenant-scoping extension on create
   });
 }
 

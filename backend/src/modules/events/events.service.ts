@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import QRCode from "qrcode";
-import { prisma } from "../../lib/prisma";
+import { prisma, Prisma, scopedCreateData } from "../../lib/prisma";
 import { ApiError } from "../../utils/ApiError";
 import { getRequestContext } from "../../lib/requestContext";
 
@@ -174,7 +174,13 @@ export async function registerForEvent(eventId: string) {
     throw ApiError.conflict("You are already registered for this event.");
   }
 
-  return prisma.eventRegistration.create({ data: { eventId, membershipId: membership.id } });
+  return prisma.eventRegistration.create({ 
+    data: ({ 
+      eventId, 
+      membershipId: membership.id,
+      // method: "MANUAL", 
+  }),
+  });
 }
 
 export async function cancelRegistration(eventId: string) {
@@ -224,7 +230,13 @@ export async function selfCheckIn(eventId: string, submittedCode: string) {
   if (existing) throw ApiError.conflict("You have already checked in to this event.");
 
   const [attendance] = await prisma.$transaction([
-    prisma.attendance.create({ data: { eventId, membershipId: membership.id, method: "QR_CODE" } }),
+    prisma.attendance.create({ 
+      data: scopedCreateData<Prisma.AttendanceUncheckedCreateInput>({
+        eventId,
+        membershipId: membership.id,
+        method: "QR_CODE"
+      })
+    }),
     prisma.eventRegistration.updateMany({
       where: { eventId, membershipId: membership.id },
       data: { status: "ATTENDED" },
@@ -247,7 +259,12 @@ export async function staffCheckIn(eventId: string, membershipId: string) {
   if (existing) throw ApiError.conflict("This member has already checked in to this event.");
 
   const [attendance] = await prisma.$transaction([
-    prisma.attendance.create({ data: { eventId, membershipId, method: "MANUAL" } }),
+    prisma.attendance.create({ data: scopedCreateData<Prisma.AttendanceUncheckedCreateInput>({ 
+      eventId, 
+      membershipId, 
+      method: "MANUAL" 
+    }) 
+  }),
     prisma.eventRegistration.updateMany({ where: { eventId, membershipId }, data: { status: "ATTENDED" } }),
   ]);
 
@@ -271,5 +288,14 @@ export async function recordGeneralAttendance(membershipId: string, eventId?: st
   const membership = await prisma.membership.findFirst({ where: { id: membershipId } });
   if (!membership) throw ApiError.notFound("Member not found in this organization.");
 
-  return prisma.attendance.create({ data: { membershipId, eventId, method: "MANUAL" } });
+  return prisma.attendance.create({ data: scopedCreateData<Prisma.AttendanceUncheckedCreateInput>({ membershipId, eventId, method: "MANUAL" }) });
 }
+
+// function scopedCreateData<T extends Partial<Record<string, any>>>(args: { membershipId: string; eventId?: string | null; method: string }) {
+//   const { membershipId, eventId, method } = args;
+//   // include eventId only when provided to satisfy strict typing
+//   const data: any = { membershipId, method };
+//   if (eventId) data.eventId = eventId;
+//   return data as T;
+// }
+

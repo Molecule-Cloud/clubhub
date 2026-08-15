@@ -80,3 +80,30 @@ export const prisma = basePrisma.$extends({
 
 export type TenantScopedPrisma = typeof prisma;
 export { Prisma };
+
+
+/**
+ * Tenant-scoped models require `organizationId` in Prisma's generated
+ * create-input types, because Prisma's type generator only reads the
+ * schema — it has no idea the extension above injects organizationId
+ * automatically at runtime.
+ *
+ * This helper is the ONE place in the codebase where we tell TypeScript
+ * "trust the extension for this one field." Every other required field
+ * on the model is still fully type-checked as normal — we are not
+ * turning off type safety, we're correcting one known false positive.
+ *
+ * Usage:
+ *   await prisma.auditLog.create({
+ *     data: scopedCreateData<Prisma.AuditLogUncheckedCreateInput>({
+ *       userId: ctx.userId,
+ *       action: "member.role_changed",
+ *       // organizationId intentionally omitted — the extension adds it
+ *     }),
+ *   });
+ */
+export function scopedCreateData<T extends { organizationId: string }>(
+  data: Omit<T, "organizationId">
+): T {
+  return data as T;
+}

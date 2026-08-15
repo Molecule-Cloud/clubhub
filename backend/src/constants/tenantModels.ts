@@ -16,7 +16,6 @@ export const TENANT_SCOPED_MODELS = new Set([
   "Receipt",
   "Project",
   "Event",
-  "EventRegistration",
   "Attendance",
   "Announcement",
   "AuditLog",
@@ -42,4 +41,5 @@ export const GLOBAL_MODELS = new Set([
   // moving it here: it's scoped transitively via Project, same pattern as
   // ProjectMilestone directly above.
   "ProjectContribution",
+  "EventRegistration",
 ]);

@@ -1,4 +1,3 @@
-import { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 
 /**
@@ -16,9 +15,13 @@ import { prisma } from "./prisma";
  * made through this helper — RLS here is a second, independent check, not
  * a replacement for it.
  */
+
+
+type ExtendedTransactionClient = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
+
 export async function withTenantRLS<T>(
   organizationId: string,
-  fn: (tx: Prisma.TransactionClient) => Promise<T>
+  fn: (tx: ExtendedTransactionClient) => Promise<T>
 ): Promise<T> {
   return prisma.$transaction(async (tx) => {
     // SET LOCAL only accepts a literal or parameter via set_config — string

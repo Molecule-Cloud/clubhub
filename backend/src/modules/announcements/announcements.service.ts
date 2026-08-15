@@ -1,4 +1,4 @@
-import { prisma } from "../../lib/prisma";
+import { prisma, Prisma, scopedCreateData } from "../../lib/prisma";
 import { getRequestContext } from "../../lib/requestContext";
 import { ApiError } from "../../utils/ApiError";
 import { sendEmail } from "../../lib/mailer";
@@ -32,12 +32,12 @@ export async function createAnnouncement(input: CreateAnnouncementInput) {
   });
 
   const announcement = await prisma.announcement.create({
-    data: {
+    data: scopedCreateData<Prisma.AnnouncementUncheckedCreateInput>({
       title: input.title,
       body: input.body,
       sentEmail: false,
       sentPush: false,
-    } as never, // organizationId injected by the tenant-scoping extension on create
+    }), // organizationId injected by the tenant-scoping extension on create
   });
 
   let emailSent = false;

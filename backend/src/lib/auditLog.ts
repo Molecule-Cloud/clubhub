@@ -1,4 +1,4 @@
-import { prisma } from "./prisma";
+import { prisma, Prisma, scopedCreateData } from "./prisma";
 import { getRequestContext } from "./requestContext";
 
 interface WriteAuditLogInput {
@@ -9,6 +9,10 @@ interface WriteAuditLogInput {
   after?: unknown;
   ipAddress?: string;
 }
+
+
+
+
 
 /**
  * Writes an audit log entry using the current request's tenant context.
@@ -23,7 +27,7 @@ export async function writeAuditLog(input: WriteAuditLogInput) {
   if (!ctx.organizationId) return; // no-op outside a tenant context (e.g. org onboarding)
 
   await prisma.auditLog.create({
-    data: {
+    data: scopedCreateData<Prisma.AuditLogUncheckedCreateInput>({
       userId: ctx.userId,
       action: input.action,
       entityType: input.entityType,
@@ -31,6 +35,6 @@ export async function writeAuditLog(input: WriteAuditLogInput) {
       beforeData: input.before === undefined ? undefined : (input.before as object),
       afterData: input.after === undefined ? undefined : (input.after as object),
       ipAddress: input.ipAddress,
-    },
+    }),
   });
 }

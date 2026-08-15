@@ -1,7 +1,7 @@
 import { randomBytes, createHash } from "node:crypto";
 import bcrypt from "bcryptjs";
 import QRCode from "qrcode";
-import { prisma } from "../../lib/prisma";
+import { prisma, Prisma, scopedCreateData } from "../../lib/prisma";
 import { env } from "../../lib/env";
 import { ApiError } from "../../utils/ApiError";
 import { getRequestContext } from "../../lib/requestContext";
@@ -40,11 +40,11 @@ export async function createRole(name: string, permissionKeys: string[]) {
   const permissions = await prisma.permission.findMany({ where: { key: { in: permissionKeys } } });
 
   return prisma.role.create({
-    data: {
+    data: scopedCreateData<Prisma.RoleUncheckedCreateInput>({
       name,
       isDefault: false,
       rolePermissions: { create: permissions.map((p) => ({ permissionId: p.id })) },
-    },
+    }),
     include: { rolePermissions: { include: { permission: true } } },
   });
 }
@@ -147,13 +147,13 @@ export async function inviteMember(email: string, roleId: string) {
   const organization = await prisma.organization.findUniqueOrThrow({ where: { id: ctx.organizationId } });
 
   const invitation = await prisma.invitation.create({
-    data: {
+    data: scopedCreateData<Prisma.InvitationUncheckedCreateInput>({
       email,
       roleId,
       invitedByUserId: ctx.userId!,
       tokenHash: hashToken(rawToken),
       expiresAt,
-    },
+    }),
   });
 
   const acceptUrl = `${env.CLIENT_URL}/join/${organization.slug}?token=${rawToken}`;

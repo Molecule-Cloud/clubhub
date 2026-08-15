@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { prisma } from "../../lib/prisma";
+import { prisma, Prisma, scopedCreateData } from "../../lib/prisma";
 import { ApiError } from "../../utils/ApiError";
 import { getRequestContext, runWithContext } from "../../lib/requestContext";
 import { writeAuditLog } from "../../lib/auditLog";
@@ -100,7 +100,7 @@ export async function initializePayment(
   const reference = `CH-${randomUUID()}`;
 
   const payment = await prisma.payment.create({
-    data: {
+    data: scopedCreateData<Prisma.PaymentUncheckedCreateInput>({
       membershipId: membership.id,
       categoryId,
       projectId,
@@ -108,7 +108,7 @@ export async function initializePayment(
       gateway: "PAYSTACK",
       gatewayRef: reference,
       status: "PENDING",
-    },
+    }),
   });
 
   const { authorizationUrl, accessCode } = await paystack.initializeTransaction({
@@ -176,7 +176,7 @@ export async function verifyPaymentByReference(reference: string) {
   if (payment.status === "SUCCESS") return { status: "SUCCESS", paymentId: payment.id };
 
   const result = await paystack.verifyTransaction(reference);
-  if (result.status === "success" && payment.status !== "SUCCESS") {
+  if (result.status === "success") {
     await settleSuccessfulPayment(payment.id, result.paidAt ? new Date(result.paidAt) : new Date());
     return { status: "SUCCESS", paymentId: payment.id };
   }
@@ -206,7 +206,7 @@ export async function recordManualPayment(input: {
   }
 
   const payment = await prisma.payment.create({
-    data: {
+    data: scopedCreateData<Prisma.PaymentUncheckedCreateInput>({
       membershipId: input.membershipId,
       categoryId: input.categoryId,
       projectId: input.projectId,
@@ -216,7 +216,7 @@ export async function recordManualPayment(input: {
       status: "PENDING", // settleSuccessfulPayment flips this to SUCCESS, same path as every other completion
       recordedByUserId: ctx.userId,
       notes: input.notes,
-    },
+    }),
   });
 
   await settleSuccessfulPayment(payment.id, new Date());
