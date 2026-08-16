@@ -49,6 +49,7 @@ export const prisma = basePrisma.$extends({
         }
 
         const ctx = tryGetRequestContext();
+      
 
         // Pre-auth contexts (no organizationId yet) legitimately query
         // tenant-scoped models sometimes — e.g. during org onboarding, we

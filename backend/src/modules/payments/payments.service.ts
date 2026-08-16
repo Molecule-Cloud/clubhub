@@ -150,8 +150,9 @@ export async function handlePaystackWebhookEvent(event: {
   if (event.event !== "charge.success") {
     if (event.event === "charge.failed" && payment.status === "PENDING") {
       await runWithContext(
-        { organizationId: payment.organizationId, userId: null, roleId: null, requestId: randomUUID() },
+        { organizationId: payment.organizationId, userId: null, roleId: null, requestId: randomUUID() }, async () => {
         () => prisma.payment.update({ where: { id: payment.id }, data: { status: "FAILED" } })
+        }
       );
     }
     return;
@@ -162,8 +163,9 @@ export async function handlePaystackWebhookEvent(event: {
   }
 
   await runWithContext(
-    { organizationId: payment.organizationId, userId: null, roleId: null, requestId: randomUUID() },
+    { organizationId: payment.organizationId, userId: null, roleId: null, requestId: randomUUID() }, async () => {
     () => settleSuccessfulPayment(payment.id, event.data.paid_at ? new Date(event.data.paid_at) : new Date())
+    }
   );
 }
 
