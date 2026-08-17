@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import { prisma, Prisma, scopedCreateData } from "./prisma";
 import { resetDatabase, createTestOrganization, asOrganization } from "../test/dbHelpers";
+import { withTenantRLS } from "./withTenantRLS";
 
 describe("tenant-scoping Prisma extension — plumbing check", () => {
   beforeEach(async () => {
@@ -15,11 +16,13 @@ describe("tenant-scoping Prisma extension — plumbing check", () => {
     const orgA = await createTestOrganization({ name: "Org A" });
 
     const role = await asOrganization(orgA.id, async () => {
-      return await prisma.role.create({
-        data: scopedCreateData<Prisma.RoleUncheckedCreateInput>({
-          name: "President",
-          isDefault: false,
-        }),
+      return await withTenantRLS(orgA.id, async (tx) => {
+        return await tx.role.create({
+          data: scopedCreateData<Prisma.RoleUncheckedCreateInput>({
+            name: "President",
+            isDefault: false,
+          }),
+        });
       });
     });
 
@@ -27,9 +30,7 @@ describe("tenant-scoping Prisma extension — plumbing check", () => {
   });
 });
 
-
-
-describe("tenant-scoping Prisma extension, cross-tenant isolation", () => {
+describe("tenant-scoping Prisma extension — cross-tenant isolation", () => {
   beforeEach(async () => {
     await resetDatabase();
   });
@@ -43,8 +44,10 @@ describe("tenant-scoping Prisma extension, cross-tenant isolation", () => {
     const orgB = await createTestOrganization({ name: "Org B" });
 
     await asOrganization(orgA.id, async () => {
-      await prisma.role.create({
-        data: scopedCreateData<Prisma.RoleUncheckedCreateInput>({ name: "President", isDefault: false }),
+      await withTenantRLS(orgA.id, async (tx) => {
+        await tx.role.create({
+          data: scopedCreateData<Prisma.RoleUncheckedCreateInput>({ name: "President", isDefault: false }),
+        });
       });
     });
 
@@ -60,8 +63,10 @@ describe("tenant-scoping Prisma extension, cross-tenant isolation", () => {
     const orgB = await createTestOrganization({ name: "Org B" });
 
     const roleA = await asOrganization(orgA.id, async () => {
-      return await prisma.role.create({
-        data: scopedCreateData<Prisma.RoleUncheckedCreateInput>({ name: "President", isDefault: false }),
+      return await withTenantRLS(orgA.id, async (tx) => {
+        return await tx.role.create({
+          data: scopedCreateData<Prisma.RoleUncheckedCreateInput>({ name: "President", isDefault: false }),
+        });
       });
     });
 
@@ -75,7 +80,7 @@ describe("tenant-scoping Prisma extension, cross-tenant isolation", () => {
     expect(updateResult.count).toBe(0);
 
     const stillOriginal = await asOrganization(orgA.id, async () => {
-      return await prisma.role.findUniqueOrThrow({ where: { id: roleA.id } });
+      return await withTenantRLS(orgA.id, async (tx) => tx.role.findUniqueOrThrow({ where: { id: roleA.id } }));
     });
     expect(stillOriginal.name).toBe("President");
   });
@@ -85,8 +90,10 @@ describe("tenant-scoping Prisma extension, cross-tenant isolation", () => {
     const orgB = await createTestOrganization({ name: "Org B" });
 
     const roleA = await asOrganization(orgA.id, async () => {
-      return await prisma.role.create({
-        data: scopedCreateData<Prisma.RoleUncheckedCreateInput>({ name: "President", isDefault: false }),
+      return await withTenantRLS(orgA.id, async (tx) => {
+        return await tx.role.create({
+          data: scopedCreateData<Prisma.RoleUncheckedCreateInput>({ name: "President", isDefault: false }),
+        });
       });
     });
 
@@ -97,12 +104,11 @@ describe("tenant-scoping Prisma extension, cross-tenant isolation", () => {
     // result before trusting it. If this test ever starts failing because
     // findUnique becomes correctly scoped, that's GOOD — update this test
     // to assert the safe behavior instead of deleting it.
-    
     const leaked = await asOrganization(orgB.id, async () => {
-      return await prisma.role.findUnique({ where: { id: roleA.id } });
+      return await withTenantRLS(orgB.id, async (tx) => tx.role.findUnique({ where: { id: roleA.id } }));
     });
 
-    expect(leaked).not.toBeNull();
-    expect(leaked?.organizationId).toBe(orgA.id); // Org B's context, but Org A's row — the gap, made visible
+    expect(leaked).toBeNull();
+    // expect(leaked?.organizationId).toBe(orgA.id); // Org B's context, but Org A's row — the gap, made visible
   });
 });
