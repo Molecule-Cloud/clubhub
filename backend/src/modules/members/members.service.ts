@@ -39,14 +39,14 @@ export async function createRole(name: string, permissionKeys: string[]) {
 
   const permissions = await prisma.permission.findMany({ where: { key: { in: permissionKeys } } });
 
-  return prisma.role.create({
+  return withTenantRLS(ctx.organizationId, async (tx) => tx.role.create({
     data: scopedCreateData<Prisma.RoleUncheckedCreateInput>({
       name,
       isDefault: false,
       rolePermissions: { create: permissions.map((p) => ({ permissionId: p.id })) },
     }),
     include: { rolePermissions: { include: { permission: true } } },
-  });
+  }));
 }
 
 export async function renameRole(roleId: string, name: string) {

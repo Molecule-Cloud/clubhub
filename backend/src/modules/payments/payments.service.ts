@@ -207,7 +207,7 @@ export async function recordManualPayment(input: {
     throw ApiError.badRequest("projectId is required for project contribution payments.");
   }
 
-  const payment = await prisma.payment.create({
+  const payment = await withTenantRLS(ctx.organizationId, (tx) => tx.payment.create({
     data: scopedCreateData<Prisma.PaymentUncheckedCreateInput>({
       membershipId: input.membershipId,
       categoryId: input.categoryId,
@@ -219,7 +219,7 @@ export async function recordManualPayment(input: {
       recordedByUserId: ctx.userId,
       notes: input.notes,
     }),
-  });
+  }));
 
   await settleSuccessfulPayment(payment.id, new Date());
 
