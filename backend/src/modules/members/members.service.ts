@@ -50,10 +50,13 @@ export async function createRole(name: string, permissionKeys: string[]) {
 }
 
 export async function renameRole(roleId: string, name: string) {
+  const ctx = getRequestContext();
+  if (!ctx.organizationId) throw ApiError.forbidden();
+
   const role = await prisma.role.findFirst({ where: { id: roleId } });
   if (!role) throw ApiError.notFound("Role not found.");
 
-  return prisma.role.update({ where: { id: roleId }, data: { name } });
+  return withTenantRLS(ctx.organizationId, (tx) => tx.role.update({ where: { id: roleId }, data: { name } }));
 }
 
 /**
@@ -71,11 +74,11 @@ export async function setRolePermissions(roleId: string, permissionKeys: string[
 
   const permissions = await prisma.permission.findMany({ where: { key: { in: permissionKeys } } });
 
-  await prisma.$transaction([
-    prisma.rolePermission.deleteMany({ where: { roleId } }),
-    prisma.rolePermission.createMany({ data: permissions.map((p) => ({ roleId, permissionId: p.id })) }),
-  ]);
-
+  await withTenantRLS(ctx.organizationId, async (tx) => {
+    await tx.rolePermission.deleteMany({ where: { roleId } });
+    await tx.rolePermission.createMany({ data: permissions.map((p) => ({ roleId, permissionId: p.id })) });
+  });
+ 
   await writeAuditLog({
     action: "role.permissions_updated",
     entityType: "Role",
@@ -96,14 +99,18 @@ export async function setRolePermissions(roleId: string, permissionKeys: string[
  * currently holds them, since Role deletion is onDelete: Restrict against
  * Membership by design (see schema.prisma). */
 export async function deleteRole(roleId: string) {
+  const ctx = getRequestContext();
+  if (!ctx.organizationId) throw ApiError.forbidden();
+
   const role = await prisma.role.findFirst({ where: { id: roleId }, include: { _count: { select: { memberships: true } } } });
   if (!role) throw ApiError.notFound("Role not found.");
-  if (role.isDefault) throw ApiError.badRequest("Default roles can't be deleted — rename or adjust its permissions instead.");
+  if (role.isDefault) throw ApiError.badRequest("Default roles can't be deleted, rename or adjust its permissions instead.");
   if (role._count.memberships > 0) {
     throw ApiError.conflict("This role is currently assigned to one or more members. Reassign them first.");
   }
-
-  await prisma.role.delete({ where: { id: roleId } });
+  await withTenantRLS(ctx.organizationId, async (tx) => {
+    await tx.role.delete({ where: { id: roleId } });
+  });
 }
 
 async function generateMembershipNumber(organizationId: string, orgSlug: string): Promise<string> {

@@ -288,6 +288,11 @@ export async function recordGeneralAttendance(membershipId: string, eventId?: st
   const membership = await prisma.membership.findFirst({ where: { id: membershipId } });
   if (!membership) throw ApiError.notFound("Member not found in this organization.");
 
+  if (eventId) {
+    const event = await prisma.event.findFirst({ where: { id: eventId } });
+    if (!event) throw ApiError.notFound("Event not found in this organization.");
+  }
+
   return prisma.attendance.create({ data: scopedCreateData<Prisma.AttendanceUncheckedCreateInput>({ membershipId, eventId, method: "MANUAL" }) });
 }
 
