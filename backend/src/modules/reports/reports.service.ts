@@ -1,3 +1,4 @@
+import { filter } from "pdfkit";
 import { Prisma, prisma } from "../../lib/prisma";
 import { getRequestContext } from "../../lib/requestContext";
 import { ApiError } from "../../utils/ApiError";
@@ -151,6 +152,8 @@ export async function getAttendanceSummary(eventId: string | undefined, range: D
   const orgId = requireOrgId();
 
   if (eventId) {
+    const event = await prisma.event.findFirst({ where: { id: eventId } });
+    if (!event) throw ApiError.notFound("Event not found in this organization.");
     const [registrations, attended] = await Promise.all([
       prisma.eventRegistration.count({ where: { eventId, status: { in: ["REGISTERED", "CONFIRMED", "ATTENDED"] } } }),
       prisma.attendance.count({ where: { eventId } }),
@@ -201,6 +204,7 @@ function csvEscape(value: unknown): string {
 }
 
 export async function exportPaymentsCsv(filters: { status?: string; from?: string; to?: string }) {
+  requireOrgId();
   const where = {
     ...(filters.status ? { status: filters.status as never } : {}),
     ...(filters.from || filters.to
