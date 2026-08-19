@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { MoreHorizontal, MapPin, QrCode, Users } from "lucide-react";
+import { MoreHorizontal, MapPin, QrCode, Users, Pencil } from "lucide-react";
 import { useEvents, useDeleteEvent, type ClubEvent } from "@/hooks/use-events";
 import { useToast } from "@/components/ui/toast";
 import { ApiClientError } from "@/lib/auth-context";
@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { CreateEventDialog } from "@/components/events/create-event-dialog";
 import { EventDetailDialog } from "@/components/events/event-detail-dialog";
+import { EditEventDialog } from "@/components/events/edit-event-dialog";
 
 function formatEventDate(iso: string) {
   return new Intl.DateTimeFormat("en-GH", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(
@@ -24,6 +25,7 @@ export default function EventsPage() {
   const deleteEvent = useDeleteEvent();
   const { toast } = useToast();
   const [detailEvent, setDetailEvent] = useState<ClubEvent | null>(null);
+  const [editEvent, setEventId] = useState<ClubEvent | null>(null);
 
   async function handleDelete(eventId: string) {
     if (!confirm("Delete this event? Registrations and attendance records will be removed.")) return;
@@ -79,6 +81,10 @@ export default function EventsPage() {
                           <QrCode className="mr-2 h-4 w-4" />
                           View check-in QR
                         </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => setEventId(event)}>
+                          <Pencil className="mr-2 h-4 w-4" />
+                          Edit
+                        </DropdownMenuItem>
                         <DropdownMenuItem destructive onClick={() => handleDelete(event.id)}>
                           Delete
                         </DropdownMenuItem>
@@ -120,6 +126,11 @@ export default function EventsPage() {
         eventId={detailEvent?.id ?? null}
         eventTitle={detailEvent?.title}
         onOpenChange={(open) => !open && setDetailEvent(null)}
+      />
+
+      <EditEventDialog
+        event={editEvent}
+        onOpenChange={(open) => !open && setEventId(null)}
       />
     </div>
   );
