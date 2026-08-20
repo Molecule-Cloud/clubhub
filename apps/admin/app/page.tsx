@@ -124,8 +124,9 @@ export default function LandingPage() {
           One Platform. Every Club. Unlimited Possibilities.
         </h1>
         <p className="max-w-xl text-lg text-muted-foreground">
-          Manage members, run events, and collect payments — all from one dashboard your whole
+          Manage members, run events, and collect payments, all from one dashboard your whole
           organization can rely on.
+          ClubHub is here to make management easier.
         </p>
         <div className="flex flex-col gap-3 sm:flex-row">
           <Link href="/signup">

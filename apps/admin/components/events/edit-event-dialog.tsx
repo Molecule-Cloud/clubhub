@@ -18,8 +18,8 @@ const eventSchema = z.object({
     .min(2, "Enter a title"),
     location: z.string().optional(),
     description: z.string().optional(),
-    startsAt: z.string().datetime({ offset: true }).min(1, "Choose a start date and time"),
-    endsAt: z.string().datetime({ offset: true }).optional(),
+    startsAt: z.string().min(1, "Choose a start date and time"),
+    endsAt: z.string().optional(),
     capacity: z.coerce.number().positive().optional().or(z.literal("")),
     ticketPrice: z.coerce.number().positive().optional().or(z.literal("")),
 });
@@ -103,12 +103,12 @@ export function EditEventDialog({ event, onOpenChange}: EditEventDialogProps) {
 
 
     return (
-        <Dialog open={!event} onOpenChange={onOpenChange}>
+        <Dialog open={!!event} onOpenChange={onOpenChange}>
             <DialogContent>
                 <DialogHeader>
                     <DialogTitle>Edit event</DialogTitle>
                     <DialogDescription>
-                        Chabges are visible to members instantly.
+                        Changes are visible to members instantly.
                     </DialogDescription>
                 </DialogHeader>
                 <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
@@ -116,7 +116,7 @@ export function EditEventDialog({ event, onOpenChange}: EditEventDialogProps) {
                         <Label htmlFor="edit-event-title">
                             Title
                         </Label>
-                        <Input id="edir-event-title" placeholder="February General Meeting" {...register("title")} />
+                        <Input id="edit-event-title" placeholder="February General Meeting" {...register("title")} />
                         {errors.title && <p className="text-xs text-destructive">{errors.title.message}</p>}
                     </div>
 
@@ -144,7 +144,7 @@ export function EditEventDialog({ event, onOpenChange}: EditEventDialogProps) {
                         <Input id="edit-event-location" placeholder="MovenPick Ambassador Hotel, Accra" {...register("location")} />
                     </div>
 
-                    <div className="flex flex-cola-2 gap-3">
+                    <div className="flex flex-cols-2 gap-3">
                         <div className="flex flex-col gap-1.5">
                             <Label htmlFor="edit-event-capacity">
                                 Capacity (optional)

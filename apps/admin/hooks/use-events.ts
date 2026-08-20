@@ -55,7 +55,7 @@ export function useCreateEvent() {
 export function useUpdateEvent() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({eventId, input} : { eventId: string; input: Partial<CreateEventInput> }) => api.put(`/events/${eventId}`, input),
+    mutationFn: ({eventId, input} : { eventId: string; input: Partial<CreateEventInput> }) => api.patch(`/events/${eventId}`, input),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["events"] })
   })
 }
