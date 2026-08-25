@@ -13,7 +13,9 @@
       "resizeMode": "contain",
       "backgroundColor": "#FAFAF9"
     },
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "africa.clubhub.mobile"
@@ -39,10 +41,12 @@
         {
           "photosPermission": "ClubHub uses your photo library to set your profile picture."
         }
-      ]
+      ],
+      "expo-asset",
+      "expo-font"
     ],
     "extra": {
-      "apiUrl": "http://localhost:4000/api/v1"
+      "apiUrl": "http://10.173.86.209:4000/api/v1"
     }
   }
 }
