@@ -17,6 +17,7 @@ export default function LoginScreen() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   async function handleSubmit() {
+    console.log("BUTTON PRESSED")
     if (!organizationSlug || !email || !password) {
       setError("Please fill in every field.");
       return;
@@ -26,6 +27,7 @@ export default function LoginScreen() {
     try {
       await login(email, password, organizationSlug);
     } catch (err) {
+      console.log("LOGIN ERROR:", err, "| isApiClientError:", err instanceof ApiClientError, "| name:", (err as any)?.name, "| message:", (err as any)?.message);
       setError(err instanceof ApiClientError ? err.message : "Something went wrong. Please try again.");
     } finally {
       setIsSubmitting(false);
