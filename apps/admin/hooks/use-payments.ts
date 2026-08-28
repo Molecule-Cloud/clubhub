@@ -93,6 +93,28 @@ export function useRecordManualPayment() {
   });
 }
 
+export function usePendingCashPayments() {
+  return useQuery({
+    queryKey: ["payments", "pending-cash"],
+    queryFn: () => api.get<Payment[]>("/payments/pending-cash"),
+    // Treasurers should see a new request appear promptly without a
+    // manual refresh — this is the "notification" for this feature (see
+    // the in-app-list-instead-of-push decision made when scoping it).
+    refetchInterval: 30000,
+  });
+}
+
+export function useConfirmCashPayment() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (paymentId: string) => api.post(`/payments/${paymentId}/confirm-cash`, {}),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["payments"] });
+      queryClient.invalidateQueries({ queryKey: ["reports"] });
+    },
+  });
+}
+
 export function useRefundPayment() {
   const queryClient = useQueryClient();
   return useMutation({

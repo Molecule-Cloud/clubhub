@@ -45,6 +45,21 @@ export async function refundPayment(req: Request, res: Response) {
   return sendSuccess(res, result);
 }
 
+export async function requestCashPayment(req: Request, res: Response) {
+  const result = await service.requestCashPayment(req.body);
+  return sendSuccess(res, result, 201);
+}
+
+export async function listPendingCashPayments(req: Request, res: Response) {
+  const result = await service.listPendingCashPayments();
+  return sendSuccess(res, result);
+}
+
+export async function confirmCashPayment(req: Request, res: Response) {
+  const result = await service.confirmCashPayment(req.params.paymentId as string);
+  return sendSuccess(res, result);
+}
+
 export async function listPayments(req: Request, res: Response) {
   const result = await service.listPayments(req.query as never);
   return sendSuccess(res, result.payments, 200, result.pagination);

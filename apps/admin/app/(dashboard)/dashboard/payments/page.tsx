@@ -14,6 +14,7 @@ import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuIte
 import { Button } from "@/components/ui/button";
 import { RecordManualPaymentDialog } from "@/components/payments/record-manual-payment-dialog";
 import { ManageCategoriesDialog } from "@/components/payments/manage-categories-dialog";
+import { PendingCashConfirmations } from "@/components/payments/pending-cash-confirmations";
 
 const STATUS_VARIANT: Record<Payment["status"], "success" | "pending" | "destructive" | "secondary"> = {
   SUCCESS: "success",
@@ -68,6 +69,8 @@ export default function PaymentsPage() {
           <RecordManualPaymentDialog />
         </div>
       </div>
+
+      <PendingCashConfirmations />
 
       <Card>
         <CardContent className="flex items-center gap-4 p-6">
@@ -137,7 +140,9 @@ export default function PaymentsPage() {
                     <TableCell>
                       <Badge variant={STATUS_VARIANT[payment.status]}>{payment.status}</Badge>
                     </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{payment.gateway}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {payment.gateway === "CASH" && payment.status === "PENDING" ? "Cash (unconfirmed)" : payment.gateway}
+                    </TableCell>
                     <TableCell>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>

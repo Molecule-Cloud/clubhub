@@ -4,7 +4,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import * as WebBrowser from "expo-web-browser";
 import * as Linking from "expo-linking";
 import { Ionicons } from "@expo/vector-icons";
-import { usePaymentCategories, useMyPayments, useInitializePayment, useVerifyPayment, type PaymentCategory, type Payment } from "@/lib/use-payments";
+import { usePaymentCategories, useMyPayments, useInitializePayment, useVerifyPayment, useRequestCashPayment, usePendingCashPayments, useConfirmCashPayment, type PaymentCategory, type Payment } from "@/lib/use-payments";
 import { useTheme } from "@/theme/useTheme";
 import { spacing, radius } from "@/theme/colors";
 
@@ -29,6 +29,26 @@ export default function PaymentsScreen() {
   const { data: payments, isLoading: paymentsLoading } = useMyPayments();
   const initializePayment = useInitializePayment();
   const verifyPayment = useVerifyPayment();
+  const requestCashPayment = useRequestCashPayment();
+  const { data: pendingCashEnvelope } = usePendingCashPayments();
+  const pendingCash = pendingCashEnvelope?.data ?? [];
+  const confirmCashPayment = useConfirmCashPayment();
+
+  function handleConfirmCash(paymentId: string, memberName: string) {
+    Alert.alert("Confirm receipt", `Confirm you've received cash from ${memberName}?`, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Confirm",
+        onPress: async () => {
+          try {
+            await confirmCashPayment.mutateAsync(paymentId);
+          } catch {
+            Alert.alert("Something went wrong", "Please try again.");
+          }
+        },
+      },
+    ]);
+  }
 
   const [selectedCategory, setSelectedCategory] = useState<PaymentCategory | null>(null);
   const [amount, setAmount] = useState("");
@@ -86,10 +106,74 @@ export default function PaymentsScreen() {
     }
   }
 
+  async function handlePayCash() {
+    if (!selectedCategory) return;
+    const amountValue = Number(amount);
+    if (!amountValue || amountValue <= 0) {
+      Alert.alert("Enter an amount", "Please enter a valid amount to pay.");
+      return;
+    }
+
+    Alert.alert(
+      "Pay with cash",
+      `You're declaring you'll pay ${formatMoney(Math.round(amountValue * 100))} in cash for ${selectedCategory.name}. Your treasurer will need to confirm they've received it before this counts as paid.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Confirm",
+          onPress: async () => {
+            setIsProcessing(true);
+            try {
+              await requestCashPayment.mutateAsync({
+                categoryId: selectedCategory.id,
+                amount: Math.round(amountValue * 100),
+              });
+              Alert.alert("Recorded", "Your treasurer has been notified to confirm receipt of your cash payment.");
+              setSelectedCategory(null);
+              setAmount("");
+            } catch {
+              Alert.alert("Something went wrong", "Please try again.");
+            } finally {
+              setIsProcessing(false);
+            }
+          },
+        },
+      ]
+    );
+  }
+
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.background }]}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <Text style={[styles.title, { color: theme.foreground }]}>Payments</Text>
+
+        {!!pendingCash?.length && (
+          <View style={styles.section}>
+            <Text style={[styles.sectionLabel, { color: theme.nodeAmber }]}>
+              {pendingCash.length} cash payment{pendingCash.length > 1 ? "s" : ""} awaiting confirmation
+            </Text>
+            <View style={{ gap: spacing.sm }}>
+              {pendingCash.map((p) => (
+                <View key={p.id} style={[styles.historyRow, { borderColor: theme.nodeAmber, backgroundColor: theme.card }]}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.historyCategory, { color: theme.foreground }]}>
+                      {p.membership.user.firstName} {p.membership.user.lastName}
+                    </Text>
+                    <Text style={[styles.historyDate, { color: theme.mutedForeground }]}>
+                      {p.category.name} · {formatMoney(p.amount, p.currency)}
+                    </Text>
+                  </View>
+                  <Pressable
+                    onPress={() => handleConfirmCash(p.id, `${p.membership.user.firstName} ${p.membership.user.lastName}`)}
+                    style={[styles.confirmButton, { backgroundColor: theme.primary }]}
+                  >
+                    <Text style={[styles.confirmButtonText, { color: theme.primaryForeground }]}>Confirm</Text>
+                  </Pressable>
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
 
         <View style={styles.section}>
           <Text style={[styles.sectionLabel, { color: theme.mutedForeground }]}>Make a payment</Text>
@@ -142,6 +226,16 @@ export default function PaymentsScreen() {
                   <Text style={[styles.payButtonText, { color: theme.primaryForeground }]}>Pay with Paystack</Text>
                 )}
               </Pressable>
+              <Pressable
+                onPress={handlePayCash}
+                disabled={isProcessing}
+                style={({ pressed }) => [
+                  styles.cashButton,
+                  { borderColor: theme.border, opacity: pressed || isProcessing ? 0.85 : 1 },
+                ]}
+              >
+                <Text style={[styles.cashButtonText, { color: theme.foreground }]}>Pay with cash</Text>
+              </Pressable>
             </View>
           )}
         </View>
@@ -158,7 +252,11 @@ export default function PaymentsScreen() {
                 <View key={p.id} style={[styles.historyRow, { borderColor: theme.border, backgroundColor: theme.card }]}>
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.historyCategory, { color: theme.foreground }]}>{p.category.name}</Text>
-                    <Text style={[styles.historyDate, { color: theme.mutedForeground }]}>{formatDate(p.paidAt ?? p.createdAt)}</Text>
+                    <Text style={[styles.historyDate, { color: theme.mutedForeground }]}>
+                      {p.status === "PENDING" && p.gateway === "CASH"
+                        ? "Awaiting treasurer confirmation"
+                        : formatDate(p.paidAt ?? p.createdAt)}
+                    </Text>
                   </View>
                   <View style={{ alignItems: "flex-end", gap: 4 }}>
                     <Text style={[styles.historyAmount, { color: theme.foreground }]}>{formatMoney(p.amount, p.currency)}</Text>
@@ -196,6 +294,10 @@ const styles = StyleSheet.create({
   amountInput: { height: 44, borderWidth: 1, borderRadius: radius.sm, paddingHorizontal: spacing.md, fontSize: 16, fontVariant: ["tabular-nums"] },
   payButton: { height: 46, borderRadius: radius.md, alignItems: "center", justifyContent: "center" },
   payButtonText: { fontSize: 14, fontWeight: "700" },
+  cashButton: { height: 46, borderRadius: radius.md, alignItems: "center", justifyContent: "center", borderWidth: 1 },
+  cashButtonText: { fontSize: 14, fontWeight: "600" },
+  confirmButton: { paddingHorizontal: spacing.md, paddingVertical: spacing.xs, borderRadius: radius.sm },
+  confirmButtonText: { fontSize: 13, fontWeight: "700" },
   emptyText: { fontSize: 13 },
   historyRow: { flexDirection: "row", alignItems: "center", borderWidth: 1, borderRadius: radius.md, padding: spacing.md, gap: spacing.sm },
   historyCategory: { fontSize: 14, fontWeight: "600" },

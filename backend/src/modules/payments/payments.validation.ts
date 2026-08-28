@@ -69,6 +69,18 @@ export const verifyPaymentSchema = z.object({
   params: z.object({ reference: z.string().min(1) }),
 });
 
+export const requestCashPaymentSchema = z.object({
+  body: z.object({
+    categoryId: z.string().cuid(),
+    amount: z.number().int().positive(), // minor units, same convention as initializePayment
+    projectId: z.string().cuid().optional(),
+  }),
+});
+
+export const confirmCashPaymentSchema = z.object({
+  params: z.object({ paymentId: z.string().cuid() }),
+});
+
 export const refundPaymentSchema = z.object({
   params: z.object({ paymentId: z.string().cuid() }),
   body: z.object({ amount: z.number().int().positive().optional() }), // omit = full refund

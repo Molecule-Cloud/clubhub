@@ -342,3 +342,84 @@ export async function getPayment(paymentId: string) {
   if (!payment) throw ApiError.notFound("Payment not found.");
   return payment;
 }
+
+/**
+ * Member-initiated: "I'll pay this in cash." Creates a PENDING payment
+ * with no recordedByUserId — nobody has verified it yet. Unlike
+ * recordManualPayment (treasurer enters it, already confirmed in the
+ * same action), this stays PENDING until a treasurer explicitly
+ * confirms receipt via confirmCashPayment.
+ */
+export async function requestCashPayment(input: { categoryId: string; projectId?: string; amount: number }) {
+  const ctx = getRequestContext();
+  if (!ctx.userId) throw ApiError.forbidden();
+
+  const membership = await prisma.membership.findFirst({ where: { userId: ctx.userId } });
+  if (!membership) throw ApiError.forbidden("No active membership found.");
+
+  const category = await prisma.paymentCategory.findFirst({ where: { id: input.categoryId } });
+  if (!category) throw ApiError.notFound("Payment category not found in this organization.");
+
+  if (input.projectId) {
+    const project = await prisma.project.findFirst({ where: { id: input.projectId } });
+    if (!project) throw ApiError.notFound("Project not found in this organization.");
+  }
+
+  return prisma.payment.create({
+    data: scopedCreateData<Prisma.PaymentUncheckedCreateInput>({
+      membershipId: membership.id,
+      categoryId: input.categoryId,
+      projectId: input.projectId,
+      amount: input.amount,
+      gateway: "CASH",
+      gatewayRef: `CASH-${randomUUID()}`,
+      status: "PENDING",
+    }),
+  });
+}
+
+/**
+ * Treasurer-facing: every cash payment a member has declared but nobody
+ * has confirmed receipt of yet. The in-app equivalent of a notification —
+ * always accurate the moment the treasurer opens it, unlike a push
+ * notification that can be missed or disabled.
+ */
+export async function listPendingCashPayments() {
+  return prisma.payment.findMany({
+    where: { gateway: "CASH", status: "PENDING" },
+    orderBy: { createdAt: "asc" },
+    include: {
+      category: { select: { name: true } },
+      membership: { include: { user: { select: { firstName: true, lastName: true, email: true } } } },
+    },
+  });
+}
+
+/**
+ * Treasurer confirms a member's declared cash payment was actually
+ * received. High-stakes financial mutation — matches recordManualPayment
+ * and refundPayment in going through withTenantRLS, not just the
+ * app-layer extension.
+ */
+export async function confirmCashPayment(paymentId: string) {
+  const ctx = getRequestContext();
+  if (!ctx.organizationId || !ctx.userId) throw ApiError.forbidden();
+
+  await withTenantRLS(ctx.organizationId, async (tx) => {
+    const payment = await tx.payment.findFirst({ where: { id: paymentId, gateway: "CASH", status: "PENDING" } });
+    if (!payment) throw ApiError.notFound("Pending cash payment not found.");
+
+    await tx.payment.update({ where: { id: paymentId }, data: { recordedByUserId: ctx.userId } });
+  });
+
+  await settleSuccessfulPayment(paymentId, new Date());
+
+  await writeAuditLog({
+    action: "payment.cash_confirmed",
+    entityType: "Payment",
+    entityId: paymentId,
+  });
+
+  return prisma.payment.findUniqueOrThrow({ where: { id: paymentId } });
+}
+

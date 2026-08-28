@@ -23,6 +23,18 @@ export interface Payment {
   receipt: { id: string; receiptNumber: string; pdfUrl: string } | null;
 }
 
+/** The treasurer's view of a pending cash payment needs to know *whose*
+ * payment it is — unlike Payment above, which is always the current
+ * member's own history, where that would be redundant. */
+export interface PendingCashPayment {
+  id: string;
+  amount: number;
+  currency: string;
+  createdAt: string;
+  category: { name: string };
+  membership: { user: { firstName: string; lastName: string } };
+}
+
 export function usePaymentCategories() {
   return useQuery({
     queryKey: ["payment-categories"],
@@ -49,6 +61,37 @@ export function useInitializePayment() {
   return useMutation({
     mutationFn: (input: InitializePaymentInput) =>
       api.post<{ paymentId: string; authorizationUrl: string; reference: string }>("/payments/initialize", input),
+  });
+}
+
+interface RequestCashPaymentInput {
+  categoryId: string;
+  amount: number; // minor units
+  projectId?: string;
+}
+
+export function useRequestCashPayment() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: RequestCashPaymentInput) => api.post<Payment>("/payments/cash", input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["my-payments"] }),
+  });
+}
+
+export function usePendingCashPayments() {
+  return useQuery({
+    queryKey: ["payments", "pending-cash"],
+    queryFn: () => api.get<PendingCashPayment[]>("/payments/pending-cash"),
+    retry: false,
+    refetchInterval: 30000,
+  });
+}
+
+export function useConfirmCashPayment() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (paymentId: string) => api.post(`/payments/${paymentId}/confirm-cash`, {}),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["my-payments"] }),
   });
 }
 

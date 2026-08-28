@@ -10,6 +10,8 @@ import {
   updateCategorySchema,
   initializePaymentSchema,
   recordManualPaymentSchema,
+  requestCashPaymentSchema,
+  confirmCashPaymentSchema,
   listPaymentsSchema,
   paymentIdParamSchema,
   verifyPaymentSchema,
@@ -44,6 +46,7 @@ router.patch(
 
 // Member-initiated payments
 router.post("/initialize", validate(initializePaymentSchema), asyncHandler(controller.initializePayment));
+router.post("/cash", validate(requestCashPaymentSchema), asyncHandler(controller.requestCashPayment));
 router.get("/verify/:reference", validate(verifyPaymentSchema), asyncHandler(controller.verifyPayment));
 router.get("/me", asyncHandler(controller.listMyPayments));
 
@@ -54,6 +57,10 @@ router.post(
   validate(recordManualPaymentSchema),
   asyncHandler(controller.recordManualPayment)
 );
+// Must come before the generic "/:paymentId" route below — Express matches
+// routes in registration order, and "/:paymentId" would otherwise swallow
+// this path, treating "pending-cash" as if it were an actual payment ID.
+router.get("/pending-cash", requirePermission("payments:approve"), asyncHandler(controller.listPendingCashPayments));
 router.get(
   "/",
   requirePermission("payments:view"),
@@ -66,6 +73,12 @@ router.post(
   requirePermission("payments:approve"),
   validate(refundPaymentSchema),
   asyncHandler(controller.refundPayment)
+);
+router.post(
+  "/:paymentId/confirm-cash",
+  requirePermission("payments:approve"),
+  validate(confirmCashPaymentSchema),
+  asyncHandler(controller.confirmCashPayment)
 );
 
 export default router;

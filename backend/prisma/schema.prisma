@@ -347,6 +347,7 @@ enum PaymentGateway {
   FLUTTERWAVE
   HUBTEL
   MANUAL
+  CASH
 }
 
 model Receipt {
