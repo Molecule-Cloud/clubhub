@@ -47,7 +47,7 @@
       "expo-web-browser"
     ],
     "extra": {
-      "apiUrl": "http://10.173.86.209:4000/api/v1"
+      "apiUrl": "http://10.132.246.209:4000/api/v1"
     }
   }
 }

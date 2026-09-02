@@ -42,30 +42,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // SecureStore (Keychain/Keystore) — the mobile equivalent of the admin
   // app's httpOnly-cookie-based session restore.
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
+  let cancelled = false;
+  (async () => {
+    try {
       const token = await refreshAccessToken();
       if (cancelled) return;
-      if (!token) {
-        setIsLoading(false);
-        return;
-      }
-      try {
-        const res = await api.get<{ user: AuthUser; organization: AuthOrganization }>("/auth/me");
-        if (cancelled) return;
-        setUser(res.data.user);
-        setOrganization(res.data.organization);
-      } catch {
-        setAccessToken(null);
-        await clearRefreshToken();
-      } finally {
-        if (!cancelled) setIsLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+      if (!token) return;
+
+      const res = await api.get<{ user: AuthUser; organization: AuthOrganization }>("/auth/me");
+      if (cancelled) return;
+      setUser(res.data.user);
+      setOrganization(res.data.organization);
+    } catch {
+      setAccessToken(null);
+      await clearRefreshToken();
+    } finally {
+      if (!cancelled) setIsLoading(false);
+    }
+  })();
+  return () => {
+    cancelled = true;
+  };
+}, []);
 
   const login = useCallback(async (email: string, password: string, organizationSlug: string) => {
     const res = await api.post<{
