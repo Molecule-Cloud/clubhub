@@ -5,8 +5,12 @@ import * as WebBrowser from "expo-web-browser";
 import * as Linking from "expo-linking";
 import { Ionicons } from "@expo/vector-icons";
 import { usePaymentCategories, useMyPayments, useInitializePayment, useVerifyPayment, useRequestCashPayment, usePendingCashPayments, useConfirmCashPayment, type PaymentCategory, type Payment } from "@/lib/use-payments";
+import { useCancelCashPayment } from "@/lib/use-payments";
+import { useEvents, type ClubEvent } from "@/lib/use-events";
 import { useTheme } from "@/theme/useTheme";
 import { spacing, radius } from "@/theme/colors";
+import MembershipCardScreen from "./card";
+import { set } from "zod";
 
 function formatMoney(minorUnits: number, currency = "GHS") {
   return `${currency} ${(minorUnits / 100).toFixed(2)}`;
@@ -21,6 +25,8 @@ const STATUS_COLORS: Record<Payment["status"], "nodeEmerald" | "nodeAmber" | "de
   PENDING: "nodeAmber",
   FAILED: "destructive",
   REFUNDED: "mutedForeground",
+  // Cancelled payment status added
+  CANCELLED: "mutedForeground",
 };
 
 export default function PaymentsScreen() {
@@ -33,7 +39,10 @@ export default function PaymentsScreen() {
   const { data: pendingCashEnvelope } = usePendingCashPayments();
   const pendingCash = pendingCashEnvelope?.data ?? [];
   const confirmCashPayment = useConfirmCashPayment();
+  const cancelCashPayment = useCancelCashPayment();
+  const { data: events } = useEvents();
 
+  // Handle and confirm the cash payment
   function handleConfirmCash(paymentId: string, memberName: string) {
     Alert.alert("Confirm receipt", `Confirm you've received cash from ${memberName}?`, [
       { text: "Cancel", style: "cancel" },
@@ -50,12 +59,36 @@ export default function PaymentsScreen() {
     ]);
   }
 
+  // Handle rejected cash payments
+  function handleRejectCash(paymentId: string, memberName: string) {
+    Alert.alert("Reject cash payment", `Reject the cash payment from ${memberName}?`, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Reject",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await cancelCashPayment.mutateAsync({ paymentId, reason: "Rejected by member" });
+          } catch {
+            Alert.alert("Something went wrong", "Please try again.");
+          }
+        },
+      },
+    ]);
+  }
+
   const [selectedCategory, setSelectedCategory] = useState<PaymentCategory | null>(null);
   const [amount, setAmount] = useState("");
+  const [selectedEvent, setSelectedEvent] = useState<ClubEvent | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+
+  // Events this member registered for but hasn't paid for yet
+  const unpaidEvents = events?.filter((e) => e.myRegistrationStatus !== "REGISTERED") ?? [];
+
 
   function selectCategory(category: PaymentCategory) {
     setSelectedCategory(category);
+    setSelectedEvent(null);
     setAmount(category.defaultAmount ? (category.defaultAmount / 100).toFixed(2) : "");
   }
 
@@ -107,16 +140,36 @@ export default function PaymentsScreen() {
   }
 
   async function handlePayCash() {
-    if (!selectedCategory) return;
-    const amountValue = Number(amount);
-    if (!amountValue || amountValue <= 0) {
-      Alert.alert("Enter an amount", "Please enter a valid amount to pay.");
+    // if (!selectedCategory) return;
+    // const amountValue = Number(amount);
+    // if (!amountValue || amountValue <= 0) {
+    //   Alert.alert("Enter an amount", "Please enter a valid amount to pay.");
+    //   return;
+    const isEventsFee = selectedCategory?.type === "EVENTS_FEE";
+
+    if (isEventsFee && !selectedEvent) {
+      Alert.alert("Select an event", "Please select an event to pay for.");
       return;
     }
 
+    if (!selectedCategory) {
+      Alert.alert("Select a category", "Please select a category to pay for.");
+      return;
+    }
+
+    let amountValue = 0;
+    if (!isEventsFee) {
+      amountValue = Number(amount);
+      if (!amountValue || amountValue <= 0) {
+        Alert.alert("Enter an amount", "Please enter a valid amount to pay.");
+        return;
+      }
+    }
+    const displayAmount = isEventsFee ? (selectedEvent!.ticketPrice ?? 0) : Math.round(amountValue * 100);
+
     Alert.alert(
       "Pay with cash",
-      `You're declaring you'll pay ${formatMoney(Math.round(amountValue * 100))} in cash for ${selectedCategory.name}. Your treasurer will need to confirm they've received it before this counts as paid.`,
+      `You're declaring you'll pay ${formatMoney(displayAmount)} in cash for ${isEventsFee ? selectedEvent!.title : selectedCategory.name}. Cash payment confirmation will be approved by the treasurer.`,
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -124,13 +177,31 @@ export default function PaymentsScreen() {
           onPress: async () => {
             setIsProcessing(true);
             try {
+              // const redirectUrl = Linking.createURL("payment-callback");
+              // const initResult = await initializePayment.mutateAsync({
+              //   categoryId: selectedCategory.id,
               await requestCashPayment.mutateAsync({
                 categoryId: selectedCategory.id,
-                amount: Math.round(amountValue * 100),
+                ...(isEventsFee ? { eventId: selectedEvent!.id } : { amount: Math.round(amountValue * 100) }),
+                // callbackUrl: redirectUrl,
               });
               Alert.alert("Recorded", "Your treasurer has been notified to confirm receipt of your cash payment.");
               setSelectedCategory(null);
+              setSelectedEvent(null);
               setAmount("");
+              // Free events settle immediately
+              // if (initResult.data.status === "SUCCESS") {
+              //   Alert.alert("Registration Confirmed", `The event is free`);
+              // }
+              // const browserResult = await WebBrowser.openAuthSessionAsync(initResult.data.authorizationUrl, redirectUrl);
+              // if (browserResult.type === "success") {
+              //   await verifyPayment.mutateAsync(initResult.data.reference);
+              //   Alert.alert("Payment Complete", `Thank you, your payment has been confirmed.`)
+              // }
+              // Alert.alert("Recorded", "Your treasurer has been notified to confirm receipt of your cash payment.");
+              //
+              // setSelectedEvent(null);
+              // setAmount("");
             } catch {
               Alert.alert("Something went wrong", "Please try again.");
             } finally {
@@ -169,6 +240,12 @@ export default function PaymentsScreen() {
                   >
                     <Text style={[styles.confirmButtonText, { color: theme.primaryForeground }]}>Confirm</Text>
                   </Pressable>
+                  <Pressable
+                    onPress={() => handleRejectCash(p.id, `${p.membership.user.firstName} ${p.membership.user.lastName}`)}
+                    style={[styles.confirmButton, { backgroundColor: theme.destructive, marginLeft: spacing.xs }]}
+                  >
+                    <Text style={[styles.confirmButtonText, { color: theme.primaryForeground }]}>Reject</Text>
+                  </Pressable>
                 </View>
               ))}
             </View>
@@ -177,11 +254,16 @@ export default function PaymentsScreen() {
 
         <View style={styles.section}>
           <Text style={[styles.sectionLabel, { color: theme.mutedForeground }]}>Make a payment</Text>
+          {categories?.some((c) => c.type === "PROJECT_CONTRIBUTION") && (
+            <Text style={[styles.emptyText, { color: theme.mutedForeground }]}>
+              Project not available in app yet. See treasurer.
+            </Text>
+          )}
           {categoriesLoading ? (
             <ActivityIndicator color={theme.primary} />
           ) : (
             <View style={styles.categoryGrid}>
-              {categories?.map((cat) => (
+              {categories?.filter((cat) => cat.type !== "PROJECT_CONTRIBUTION").map((cat) => (
                 <Pressable
                   key={cat.id}
                   onPress={() => selectCategory(cat)}
@@ -206,18 +288,66 @@ export default function PaymentsScreen() {
 
           {selectedCategory && (
             <View style={[styles.payBox, { borderColor: theme.border, backgroundColor: theme.card }]}>
-              <Text style={[styles.payLabel, { color: theme.mutedForeground }]}>Amount (GHS)</Text>
-              <TextInput
-                value={amount}
-                onChangeText={setAmount}
-                keyboardType="decimal-pad"
-                placeholder="0.00"
-                placeholderTextColor={theme.mutedForeground}
-                style={[styles.amountInput, { color: theme.foreground, borderColor: theme.border }]}
-              />
+              {/*<Text style={[styles.payLabel, { color: theme.mutedForeground }]}>Amount (GHS)</Text>
+            <TextInput
+            value={amount}
+            onChangeText={setAmount}
+            keyboardType="decimal-pad"
+            placeholder="0.00"
+            placeholderTextColor={theme.mutedForeground}
+            style={[styles.amountInput, { color: theme.foreground, borderColor: theme.border }]}
+            />*/}
+              {selectedCategory.type === "EVENT_FEE" ? (
+                  <>
+                    <Text style={[styles.payLabel, { color: theme.mutedForeground }]}>Which event?</Text>
+                    {unpaidEvents.length === 0 ? (
+                      <Text style={[styles.emptyText, { color: theme.mutedForeground }]}>
+                        No registered events awaiting payment. Register for an event first from the Events tab.
+                      </Text>
+                    ) : (
+                      <View style={{ gap: spacing.xs }}>
+                        {unpaidEvents.map((ev) => (
+                          <Pressable
+                            key={ev.id}
+                            onPress={() => setSelectedEvent(ev)}
+                            style={[
+                              styles.categoryChip,
+                              {
+                                borderColor: selectedEvent?.id === ev.id ? theme.primary : theme.border,
+                                backgroundColor: selectedEvent?.id === ev.id ? theme.primary + "14" : theme.background,
+                              },
+                            ]}
+                          >
+                            <Text style={[styles.categoryChipText, { color: theme.foreground }]}>{ev.title}</Text>
+                            <Text style={[styles.categoryChipAmount, { color: theme.mutedForeground }]}>
+                              {ev.ticketPrice ? formatMoney(ev.ticketPrice) : "Free"}
+                            </Text>
+                          </Pressable>
+                        ))}
+                      </View>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <Text style={[styles.payLabel, { color: theme.mutedForeground }]}>Amount (GHS)</Text>
+                    <TextInput
+                      value={amount}
+                      onChangeText={setAmount}
+                      editable={selectedCategory.defaultAmount == null}
+                      keyboardType="decimal-pad"
+                      placeholder="0.00"
+                      placeholderTextColor={theme.mutedForeground}
+                      style={[
+                        styles.amountInput,
+                        { color: theme.foreground, borderColor: theme.border },
+                        selectedCategory.defaultAmount != null && { opacity: 0.6 },
+                      ]}
+                    />
+                  </>
+                )}
               <Pressable
                 onPress={handlePay}
-                disabled={isProcessing}
+                disabled={isProcessing || (selectedCategory.type === "EVENT_FEE" && !selectedEvent)}
                 style={({ pressed }) => [styles.payButton, { backgroundColor: theme.primary, opacity: pressed || isProcessing ? 0.85 : 1 }]}
               >
                 {isProcessing ? (

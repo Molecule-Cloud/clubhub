@@ -26,7 +26,14 @@ export async function updateCategory(req: Request, res: Response) {
 // --- Payments ---
 
 export async function initializePayment(req: Request, res: Response) {
-  const result = await service.initializePayment(req.body.categoryId, req.body.amount, req.body.projectId, req.body.callbackUrl);
+  const result = await service.initializePayment(
+    req.body.categoryId,
+    req.body.amount,
+    req.body.projectId,
+    req.body.eventId,
+    req.body.idempotencyKey,
+    req.body.callbackUrl
+  );
   return sendSuccess(res, result, 201);
 }
 

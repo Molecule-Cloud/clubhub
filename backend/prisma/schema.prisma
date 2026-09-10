@@ -351,7 +351,8 @@ enum PaymentStatus {
   SUCCESS
   FAILED
   REFUNDED
-}
+  CANCELLED
+} 
 
 enum PaymentGateway {
   PAYSTACK
