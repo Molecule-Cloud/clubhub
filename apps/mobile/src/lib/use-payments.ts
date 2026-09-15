@@ -14,7 +14,7 @@ export interface Payment {
   id: string;
   amount: number;
   currency: string;
-  status: "PENDING" | "SUCCESS" | "FAILED" | "REFUNDED";
+  status: "PENDING" | "SUCCESS" | "FAILED" | "REFUNDED" | "CANCELLED";
   gateway: string;
   gatewayRef: string;
   paidAt: string | null;
@@ -53,7 +53,9 @@ export function useMyPayments() {
 
 interface InitializePaymentInput {
   categoryId: string;
-  amount: number; // minor units
+  amount?: number; // minor units
+  projectId?: string;
+  eventId?: string;
   callbackUrl: string;
 }
 
@@ -66,8 +68,18 @@ export function useInitializePayment() {
 
 interface RequestCashPaymentInput {
   categoryId: string;
-  amount: number; // minor units
+  amount?: number; // minor units
   projectId?: string;
+  eventId?: string;
+}
+
+// Cancels a pending cash payment
+export function useCancelCashPayment() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({paymentId, reason}: {paymentId: string; reason: string}) => api.post(`/payments/${paymentId}/cancel-cash`, { reason }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["payments", "pending-cash"] }),
+  })
 }
 
 export function useRequestCashPayment() {

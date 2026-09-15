@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { eventIdParamSchema } from "../events/events.validation";
 
 export const createCategorySchema = z.object({
   body: z.object({
@@ -22,10 +23,9 @@ export const updateCategorySchema = z.object({
 export const initializePaymentSchema = z.object({
   body: z.object({
     categoryId: z.string().cuid(),
-    amount: z.number().int().positive(), // minor units — required even if category has a defaultAmount,
-    // since donations/contributions are member-chosen amounts; callers pass
-    // category.defaultAmount through explicitly when it's a fixed-dues category.
+    amount: z.number().int().positive().optional(), // Recalculated by the service layer based on category.defaultAmount if not provided.
     projectId: z.string().cuid().optional(), // required in practice when category.type === PROJECT_CONTRIBUTION;
+    eventId: z.string().cuid().optional(),
     // enforced in the service layer, not here, since it depends on the category's type.
     callbackUrl: z
       .string()
@@ -45,13 +45,14 @@ export const recordManualPaymentSchema = z.object({
     categoryId: z.string().cuid(),
     amount: z.number().int().positive(),
     projectId: z.string().cuid().optional(),
+    eventId: z.string().cuid().optional(),
     notes: z.string().max(500).optional(),
   }),
 });
 
 export const listPaymentsSchema = z.object({
   query: z.object({
-    status: z.enum(["PENDING", "SUCCESS", "FAILED", "REFUNDED"]).optional(),
+    status: z.enum(["PENDING", "SUCCESS", "FAILED", "REFUNDED", "CANCELLED"]).optional(),
     categoryId: z.string().cuid().optional(),
     membershipId: z.string().cuid().optional(), // treasurer filtering by member
     from: z.string().datetime().optional(),
@@ -74,6 +75,7 @@ export const requestCashPaymentSchema = z.object({
     categoryId: z.string().cuid(),
     amount: z.number().int().positive(), // minor units, same convention as initializePayment
     projectId: z.string().cuid().optional(),
+    eventId: z.string().cuid().optional(),
   }),
 });
 
@@ -84,4 +86,8 @@ export const confirmCashPaymentSchema = z.object({
 export const refundPaymentSchema = z.object({
   params: z.object({ paymentId: z.string().cuid() }),
   body: z.object({ amount: z.number().int().positive().optional() }), // omit = full refund
+});
+
+export const cancelPaymentSchema = z.object({
+  params: z.object({ paymentId: z.string().cuid() }),
 });

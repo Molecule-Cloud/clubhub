@@ -32,6 +32,22 @@ async function settleSuccessfulPayment(paymentId: string, paidAt: Date) {
 
   await issueReceiptForPayment(paymentId);
 
+  // ======================================
+  // Update event registration of this is an event fee payment
+  // ======================================
+  if (payment.category.type === "EVENT_FEE") {
+    const registration = await prisma.eventRegistration.findFirst({
+      where: { paymentId: paymentId },
+    });
+
+    if (registration && registration.status !== "CONFIRMED") {
+      await prisma.eventRegistration.update({
+        where: { id: registration.id },
+        data: { status: "CONFIRMED" },
+      });
+    }
+  }
+
   if (payment.category.type === "PROJECT_CONTRIBUTION" && payment.projectId) {
     const existingContribution = await prisma.projectContribution.findFirst({
       where: { projectId: payment.projectId, membershipId: payment.membershipId, amount: payment.amount },
@@ -73,55 +89,198 @@ async function settleSuccessfulPayment(paymentId: string, paidAt: Date) {
  * the webhook (which only carries the reference) can find and update the
  * exact right row regardless of arrival order or retries.
  */
-export async function initializePayment(
-  categoryId: string,
-  amountMinorUnits: number,
-  projectId?: string,
-  callbackUrl?: string
-) {
-  const ctx = getRequestContext();
-  if (!ctx.organizationId || !ctx.userId) throw ApiError.forbidden();
+ export async function initializePayment(
+   categoryId: string,
+   amountMinorUnits: number | undefined, // Now optional
+   projectId?: string,
+   eventId?: string, // <-- NEW
+   idempotencyKey?: string, // <-- NEW
+   callbackUrl?: string
+ ) {
+   const ctx = getRequestContext();
+   if (!ctx.organizationId || !ctx.userId) throw ApiError.forbidden();
+ 
+   // ============================================================
+   // STEP 1: Validate category (belongs to org, active)
+   // ============================================================
+   const category = await prisma.paymentCategory.findFirst({
+     where: { id: categoryId, organizationId: ctx.organizationId, isActive: true },
+   });
+   if (!category) throw ApiError.badRequest("Payment category not found or inactive.");
+ 
+   // ============================================================
+   // STEP 2: Validate event (if provided)
+   // ============================================================
+   let event = null;
+   if (eventId) {
+     // Category must be EVENT_FEE
+     if (category.type !== "EVENT_FEE") {
+       throw ApiError.badRequest("This category is not for event fees.");
+     }
+ 
+     event = await prisma.event.findFirst({
+       where: {
+         id: eventId,
+         organizationId: ctx.organizationId,
+         startsAt: { gte: new Date() }, // Only upcoming events
+       },
+     });
+     if (!event) throw ApiError.badRequest("Event not found or not upcoming.");
+ 
+     // Check if member is registered for this event
+     const membership = await prisma.membership.findFirst({ where: { userId: ctx.userId } });
+     if (!membership) throw ApiError.forbidden("No active membership found.");
+ 
+     const registration = await prisma.eventRegistration.findUnique({
+       where: {
+         eventId_membershipId: {
+           eventId: event.id,
+           membershipId: membership.id,
+         },
+       },
+     });
+     if (!registration) {
+       throw ApiError.badRequest("You are not registered for this event.");
+     }
+     if (registration.status === "CONFIRMED") {
+       throw ApiError.badRequest("You have already confirmed registration for this event.");
+     }
+   }
+ 
+   // ============================================================
+   // STEP 3: Validate project (if provided)
+   // ============================================================
+   if (projectId) {
+     if (category.type !== "PROJECT_CONTRIBUTION") {
+       throw ApiError.badRequest("This category is not for project contributions.");
+     }
+     const project = await prisma.project.findFirst({
+       where: { id: projectId, organizationId: ctx.organizationId },
+     });
+     if (!project) throw ApiError.badRequest("Project not found in this organization.");
+   }
+ 
+   // ============================================================
+   // STEP 4: RECALCULATE THE AMOUNT (NEVER TRUST THE CLIENT!)
+   // ============================================================
+   let finalAmount: number;
+ 
+   if (event) {
+     // For events: use ticketPrice (null = free)
+     finalAmount = event.ticketPrice ?? 0;
+   } else if (category.defaultAmount !== null && category.type !== "PROJECT_CONTRIBUTION") {
+     // For dues/donations with fixed amounts
+     finalAmount = category.defaultAmount;
+   } else if (category.type === "PROJECT_CONTRIBUTION") {
+     // For project contributions: client MUST provide amount, but we validate it
+     if (!amountMinorUnits || amountMinorUnits <= 0) {
+       throw ApiError.badRequest("Please specify a valid contribution amount.");
+     }
+     // Optional: Add min/max validation (e.g., min 100 pesewas = 1 GHS)
+     if (amountMinorUnits < 100) {
+       throw ApiError.badRequest("Minimum contribution is 1 GHS (100 pesewas).");
+     }
+     finalAmount = amountMinorUnits;
+   } else {
+     // For other categories: if no defaultAmount, client must provide amount
+     if (!amountMinorUnits || amountMinorUnits <= 0) {
+       throw ApiError.badRequest("Please specify a valid amount.");
+     }
+     finalAmount = amountMinorUnits;
+   }
+ 
+   // ============================================================
+   // STEP 5: IDEMPOTENCY CHECK (prevent duplicate payments)
+   // ============================================================
+   if (idempotencyKey) {
+     const existingPayment = await prisma.payment.findFirst({
+       where: { gatewayRef: `IDEMP-${idempotencyKey}` },
+     });
+     if (existingPayment) {
+       // Return existing payment instead of creating a new one
+       return {
+         paymentId: existingPayment.id,
+         reference: existingPayment.gatewayRef,
+         status: existingPayment.status,
+         // If still PENDING, we might want to re-initiate the Paystack flow
+         // For now, just return the existing reference
+       };
+     }
+   }
+ 
+   // ============================================================
+   // STEP 6: Get membership and user
+   // ============================================================
+   const membership = await prisma.membership.findFirst({
+     where: { userId: ctx.userId, organizationId: ctx.organizationId },
+   });
+   if (!membership) throw ApiError.forbidden("No active membership found.");
+ 
+   const user = await prisma.user.findUniqueOrThrow({ where: { id: ctx.userId } });
+ 
+   // ============================================================
+   // STEP 7: Generate reference and create payment
+   // ============================================================
+   const reference = idempotencyKey ? `IDEMP-${idempotencyKey}` : `CH-${randomUUID()}`;
+ 
+   const payment = await prisma.$transaction(async (tx) => {
+     const created = await tx.payment.create({
+       data: scopedCreateData<Prisma.PaymentUncheckedCreateInput>({
+         membershipId: membership.id,
+         categoryId,
+         projectId,
+         amount: finalAmount,
+         gateway: "PAYSTACK",
+         gatewayRef: reference,
+         status: "PENDING",
+       }),
+     });
 
-  const category = await prisma.paymentCategory.findFirst({ where: { id: categoryId, isActive: true } });
-  if (!category) throw ApiError.badRequest("Payment category not found or inactive.");
+     // Attach this payment to the registration validated in STEP 2, so
+     // settleSuccessfulPayment can find and confirm it later — whether
+     // that happens via webhook or the verify-poll fallback.
+     if (event) {
+       await tx.eventRegistration.updateMany({
+         where: { eventId: event.id, membershipId: membership.id },
+         data: { paymentId: created.id },
+       });
+     }
 
-  if (category.type === "PROJECT_CONTRIBUTION" && !projectId) {
-    throw ApiError.badRequest("projectId is required for project contribution payments.");
-  }
-  if (projectId) {
-    const project = await prisma.project.findFirst({ where: { id: projectId } });
-    if (!project) throw ApiError.badRequest("Project not found in this organization.");
-  }
-
-  const membership = await prisma.membership.findFirst({ where: { userId: ctx.userId } });
-  if (!membership) throw ApiError.forbidden("No active membership found.");
-
-  const user = await prisma.user.findUniqueOrThrow({ where: { id: ctx.userId } });
-  const reference = `CH-${randomUUID()}`;
-
-  const payment = await prisma.payment.create({
-    data: scopedCreateData<Prisma.PaymentUncheckedCreateInput>({
-      membershipId: membership.id,
-      categoryId,
-      projectId,
-      amount: amountMinorUnits,
-      gateway: "PAYSTACK",
-      gatewayRef: reference,
-      status: "PENDING",
-    }),
-  });
-
-  const { authorizationUrl, accessCode } = await paystack.initializeTransaction({
-    email: user.email,
-    amountMinorUnits,
-    reference,
-    metadata: { paymentId: payment.id, organizationId: ctx.organizationId, categoryId, projectId },
-    callbackUrl,
-  });
-
-  return { paymentId: payment.id, authorizationUrl, accessCode, reference };
-}
-
+     return created;
+   });
+ 
+   // ============================================================
+   // STEP 8: If amount is 0 (free event), settle immediately
+   // ============================================================
+   if (finalAmount === 0) {
+     await settleSuccessfulPayment(payment.id, new Date());
+     return {
+       paymentId: payment.id,
+       reference: payment.gatewayRef,
+       status: "SUCCESS",
+       message: "Free event registration confirmed.",
+     };
+   }
+ 
+   // ============================================================
+   // STEP 9: Initiate Paystack transaction
+   // ============================================================
+   const { authorizationUrl, accessCode } = await paystack.initializeTransaction({
+     email: user.email,
+     amountMinorUnits: finalAmount,
+     reference,
+     metadata: {
+       paymentId: payment.id,
+       organizationId: ctx.organizationId,
+       categoryId,
+       projectId,
+       eventId,
+     },
+     callbackUrl,
+   });
+ 
+   return { paymentId: payment.id, authorizationUrl, accessCode, reference };
+ }
 /**
  * Processes a verified Paystack webhook event. Signature verification
  * happens in the controller BEFORE this is called — this function trusts
@@ -151,7 +310,7 @@ export async function handlePaystackWebhookEvent(event: {
     if (event.event === "charge.failed" && payment.status === "PENDING") {
       await runWithContext(
         { organizationId: payment.organizationId, userId: null, roleId: null, requestId: randomUUID() }, async () => {
-        () => prisma.payment.update({ where: { id: payment.id }, data: { status: "FAILED" } })
+          await prisma.payment.update({ where: { id: payment.id }, data: { status: "FAILED" } })
         }
       );
     }
@@ -164,7 +323,7 @@ export async function handlePaystackWebhookEvent(event: {
 
   await runWithContext(
     { organizationId: payment.organizationId, userId: null, roleId: null, requestId: randomUUID() }, async () => {
-    () => settleSuccessfulPayment(payment.id, event.data.paid_at ? new Date(event.data.paid_at) : new Date())
+      await settleSuccessfulPayment(payment.id, event.data.paid_at ? new Date(event.data.paid_at) : new Date())
     }
   );
 }
@@ -192,6 +351,7 @@ export async function recordManualPayment(input: {
   categoryId: string;
   amount: number;
   projectId?: string;
+  eventId?: string;
   notes?: string;
 }) {
   const ctx = getRequestContext();
@@ -207,12 +367,29 @@ export async function recordManualPayment(input: {
     throw ApiError.badRequest("projectId is required for project contribution payments.");
   }
 
+  let finalAmount = input.amount;
+  let registration = null;
+
+  if (input.eventId) {
+    if (category.type !== "EVENT_FEE") {
+      throw ApiError.badRequest("This category is not for event fees.");
+    }
+    const event = await prisma.event.findFirst({ where: { id: input.eventId } });
+    if (!event) throw ApiError.badRequest("Event not found.");
+
+    const registration = await prisma.eventRegistration.findUnique({ where: { eventId_membershipId: {eventId: input.eventId, membershipId: input.membershipId} } });
+    if (!registration) throw ApiError.badRequest("Registration not found.");
+    if (registration.status === "CONFIRMED") throw ApiError.badRequest("Registration already confirmed.");
+
+    finalAmount = event.ticketPrice ?? 0
+  }
+
   const payment = await withTenantRLS(ctx.organizationId, (tx) => tx.payment.create({
     data: scopedCreateData<Prisma.PaymentUncheckedCreateInput>({
       membershipId: input.membershipId,
       categoryId: input.categoryId,
       projectId: input.projectId,
-      amount: input.amount,
+      amount: finalAmount,
       gateway: "MANUAL",
       gatewayRef: `MANUAL-${randomUUID()}`,
       status: "PENDING", // settleSuccessfulPayment flips this to SUCCESS, same path as every other completion
@@ -220,6 +397,13 @@ export async function recordManualPayment(input: {
       notes: input.notes,
     }),
   }));
+
+  if (registration) {
+    await prisma.eventRegistration.updateMany({
+      where: { eventId: input.eventId, membershipId: input.membershipId },
+      data: { paymentId: payment.id }
+    });
+  }
 
   await settleSuccessfulPayment(payment.id, new Date());
 
@@ -236,7 +420,7 @@ export async function recordManualPayment(input: {
       action: "payment.recorded_manually",
       entityType: "Payment",
       entityId: payment.id,
-      after: { amount: input.amount, categoryId: input.categoryId, membershipId: input.membershipId },
+      after: { amount: finalAmount, categoryId: input.categoryId, membershipId: input.membershipId }
     });
 
     return prisma.payment.findUniqueOrThrow({ where: { id: payment.id } });
@@ -276,7 +460,7 @@ export async function refundPayment(paymentId: string, amountMinorUnits?: number
 }
 
 interface ListPaymentsFilters {
-  status?: "PENDING" | "SUCCESS" | "FAILED" | "REFUNDED";
+  status?: "PENDING" | "SUCCESS" | "FAILED" | "REFUNDED" | "CANCELLED";
   categoryId?: string;
   membershipId?: string;
   from?: string;
@@ -350,7 +534,7 @@ export async function getPayment(paymentId: string) {
  * same action), this stays PENDING until a treasurer explicitly
  * confirms receipt via confirmCashPayment.
  */
-export async function requestCashPayment(input: { categoryId: string; projectId?: string; amount: number }) {
+export async function requestCashPayment(input: { categoryId: string; projectId?: string; eventId?: string; amount: number }) {
   const ctx = getRequestContext();
   if (!ctx.userId) throw ApiError.forbidden();
 
@@ -365,17 +549,39 @@ export async function requestCashPayment(input: { categoryId: string; projectId?
     if (!project) throw ApiError.notFound("Project not found in this organization.");
   }
 
-  return prisma.payment.create({
+  let finalAmount = input.amount;
+  let registration = null;
+
+  if (input.eventId) {
+    if (category.type !== "EVENT_FEE") throw ApiError.badRequest("Invalid category for event fee.");
+    const event = await prisma.event.findFirst({ where: { id: input.eventId } });
+    if (!event) throw ApiError.notFound("Event not found.");
+    registration = await prisma.eventRegistration.findUnique({ where: { eventId_membershipId: { eventId: input.eventId, membershipId: membership.id } } });
+    if (!registration) throw ApiError.notFound("Registration not found for this event.");
+    if (registration.status === "CONFIRMED") throw ApiError.badRequest("Registration already confirmed for this event.");
+    finalAmount = event.ticketPrice ?? 0;
+  }
+
+  const payment = await prisma.payment.create({
     data: scopedCreateData<Prisma.PaymentUncheckedCreateInput>({
       membershipId: membership.id,
       categoryId: input.categoryId,
       projectId: input.projectId,
-      amount: input.amount,
+      amount: finalAmount,
       gateway: "CASH",
       gatewayRef: `CASH-${randomUUID()}`,
       status: "PENDING",
     }),
   });
+
+  if (registration) {
+    await prisma.eventRegistration.updateMany({
+      where: { eventId: input.eventId, membershipId: membership.id },
+      data: { paymentId: payment.id },
+    });
+  }
+
+  return payment;
 }
 
 /**
