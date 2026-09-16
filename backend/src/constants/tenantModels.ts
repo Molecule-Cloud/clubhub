@@ -19,6 +19,7 @@ export const TENANT_SCOPED_MODELS = new Set([
   "Attendance",
   "Announcement",
   "AuditLog",
+  "JoinRequest",
 ]);
 
 // Models that are deliberately NOT tenant-scoped (global catalogs, or the
