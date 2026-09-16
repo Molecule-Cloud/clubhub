@@ -16,6 +16,8 @@ import projectsRoutes from "./modules/projects/projects.routes";
 import announcementsRoutes from "./modules/announcements/announcements.routes";
 import reportsRoutes from "./modules/reports/reports.routes";
 import organizationsRoutes from "./modules/organizations/organizations.routes";
+import joinRequestsRoutes from "./modules/JoinRequests/joinRequests.routes";
+
 
 export function createApp() {
   const app = express();
@@ -67,6 +69,8 @@ export function createApp() {
   app.use("/api/v1/announcements", announcementsRoutes);
   app.use("/api/v1/reports", reportsRoutes);
   app.use("/api/v1/organizations", organizationsRoutes);
+  app.use("/api/v1/join-requests", joinRequestsRoutes);
+  
 
   // --- 404 for anything unmatched ---
   app.use((req, res) => {

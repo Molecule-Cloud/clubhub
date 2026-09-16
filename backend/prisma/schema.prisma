@@ -25,15 +25,15 @@ datasource db {
 // ============================================================
 
 model Organization {
-  id            String   @id @default(cuid())
-  name          String
-  slug          String   @unique // used for subdomain / URLs, e.g. clubhub.app/rotary-accra
-  type          OrgType  @default(OTHER)
-  logoUrl       String?
-  primaryColor  String? // brand color for member-facing PDF receipts, cards
-  contactEmail  String
-  contactPhone  String?
-  address       String?
+  id           String  @id @default(cuid())
+  name         String
+  slug         String  @unique // used for subdomain / URLs, e.g. clubhub.app/rotary-accra
+  type         OrgType @default(OTHER)
+  logoUrl      String?
+  primaryColor String? // brand color for member-facing PDF receipts, cards
+  contactEmail String
+  contactPhone String?
+  address      String?
 
   // subscription / billing
   setupFeePaid       Boolean            @default(false)
@@ -47,6 +47,7 @@ model Organization {
 
   memberships       Membership[]
   invitations       Invitation[]
+  joinRequests      JoinRequest[]
   roles             Role[]
   paymentCategories PaymentCategory[]
   payments          Payment[]
@@ -94,23 +95,23 @@ enum SubscriptionStatus {
 // A User can belong to multiple organizations (e.g. one person in two clubs),
 // each represented by a separate Membership with its own role/status.
 model User {
-  id            String    @id @default(cuid())
-  email         String    @unique
-  phone         String?   @unique
-  passwordHash  String
-  firstName     String
-  lastName      String
-  avatarUrl     String?
-  isEmailVerified Boolean @default(false)
-  isActive      Boolean   @default(true)
-  lastLoginAt   DateTime?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id              String    @id @default(cuid())
+  email           String    @unique
+  phone           String?   @unique
+  passwordHash    String
+  firstName       String
+  lastName        String
+  avatarUrl       String?
+  isEmailVerified Boolean   @default(false)
+  isActive        Boolean   @default(true)
+  lastLoginAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
-  memberships    Membership[]
-  refreshTokens  RefreshToken[]
-  otpCodes       OtpCode[]
-  auditLogs      AuditLog[]
+  memberships     Membership[]
+  refreshTokens   RefreshToken[]
+  otpCodes        OtpCode[]
+  auditLogs       AuditLog[]
   sentInvitations Invitation[]
 
   // Added after testing
@@ -122,14 +123,14 @@ model User {
 // The core tenant-scoped join: a User's presence, role, and membership
 // number within a specific Organization.
 model Membership {
-  id               String   @id @default(cuid())
-  organizationId   String
-  userId           String
-  roleId           String
+  id             String @id @default(cuid())
+  organizationId String
+  userId         String
+  roleId         String
 
-  membershipNumber String   // e.g. "RCA-2026-0143" — unique within an org
+  membershipNumber String // e.g. "RCA-2026-0143" — unique within an org
   status           MembershipStatus @default(ACTIVE)
-  joinedAt         DateTime @default(now())
+  joinedAt         DateTime         @default(now())
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -161,7 +162,7 @@ enum MembershipStatus {
 // ============================================================
 
 model Invitation {
-  id              String   @id @default(cuid())
+  id              String @id @default(cuid())
   organizationId  String
   email           String
   roleId          String
@@ -198,7 +199,7 @@ enum InvitationStatus {
 model Role {
   id             String   @id @default(cuid())
   organizationId String
-  name           String   // e.g. "President", "Treasurer" — customizable per org
+  name           String // e.g. "President", "Treasurer" — customizable per org
   isDefault      Boolean  @default(false) // seeded default vs custom-created
   createdAt      DateTime @default(now())
 
@@ -243,7 +244,7 @@ model RefreshToken {
   id        String   @id @default(cuid())
   userId    String
   tokenHash String   @unique // SHA-256 hash; raw token never stored
-  familyId  String   // groups rotated tokens; theft detection revokes whole family
+  familyId  String // groups rotated tokens; theft detection revokes whole family
   revoked   Boolean  @default(false)
   expiresAt DateTime
   createdAt DateTime @default(now())
@@ -256,14 +257,14 @@ model RefreshToken {
 }
 
 model OtpCode {
-  id        String   @id @default(cuid())
-  userId    String
-  code      String
-  purpose   OtpPurpose
-  attempts  Int      @default(0)
-  expiresAt DateTime
+  id         String     @id @default(cuid())
+  userId     String
+  code       String
+  purpose    OtpPurpose
+  attempts   Int        @default(0)
+  expiresAt  DateTime
   consumedAt DateTime?
-  createdAt DateTime @default(now())
+  createdAt  DateTime   @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -282,14 +283,14 @@ enum OtpPurpose {
 // ============================================================
 
 model PaymentCategory {
-  id             String   @id @default(cuid())
+  id             String              @id @default(cuid())
   organizationId String
-  name           String   // "Monthly Dues", "Annual Dues", "Foundation Donation"...
+  name           String // "Monthly Dues", "Annual Dues", "Foundation Donation"...
   type           PaymentCategoryType
-  isRecurring    Boolean  @default(false)
-  defaultAmount  Int?     // minor units; null if custom amount per payment
-  isActive       Boolean  @default(true)
-  createdAt      DateTime @default(now())
+  isRecurring    Boolean             @default(false)
+  defaultAmount  Int? // minor units; null if custom amount per payment
+  isActive       Boolean             @default(true)
+  createdAt      DateTime            @default(now())
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   payments     Payment[]
@@ -309,36 +310,36 @@ enum PaymentCategoryType {
 }
 
 model Payment {
-  id             String   @id @default(cuid())
+  id             String  @id @default(cuid())
   organizationId String
   membershipId   String
   categoryId     String
   projectId      String? // set when category.type === PROJECT_CONTRIBUTION; links payment to the project it funds
 
-  amount         Int      // minor units (pesewas)
-  currency       String   @default("GHS")
-  status         PaymentStatus @default(PENDING)
-  gateway        PaymentGateway
-  gatewayRef     String   @unique // Paystack transaction reference, or "MANUAL-<cuid>" for offline entries
+  amount           Int // minor units (pesewas)
+  currency         String         @default("GHS")
+  status           PaymentStatus  @default(PENDING)
+  gateway          PaymentGateway
+  gatewayRef       String         @unique // Paystack transaction reference, or "MANUAL-<cuid>" for offline entries
   recordedByUserId String? // set only for MANUAL payments — who at the org recorded this cash/offline entry
-  
+
   // Added after testing
-  approvedById   String?
-  approvedBy     User?        @relation("PaymentApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
-  approvedAt     DateTime?
+  approvedById       String?
+  approvedBy         User?     @relation("PaymentApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  approvedAt         DateTime?
   webHookProcessedAt DateTime?
-  
-  notes          String?  // e.g. "Cash collected at Feb general meeting" — MANUAL entries only
-  paidAt         DateTime?
+
+  notes  String? // e.g. "Cash collected at Feb general meeting" — MANUAL entries only
+  paidAt DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  membership   Membership      @relation(fields: [membershipId], references: [id], onDelete: Restrict)
-  category     PaymentCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
-  project      Project?        @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  receipt      Receipt?
+  organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  membership        Membership         @relation(fields: [membershipId], references: [id], onDelete: Restrict)
+  category          PaymentCategory    @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  project           Project?           @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  receipt           Receipt?
   eventRegistration EventRegistration?
 
   @@index([organizationId, status])
@@ -352,7 +353,7 @@ enum PaymentStatus {
   FAILED
   REFUNDED
   CANCELLED
-} 
+}
 
 enum PaymentGateway {
   PAYSTACK
@@ -366,9 +367,9 @@ model Receipt {
   id             String   @id @default(cuid())
   organizationId String
   paymentId      String   @unique
-  receiptNumber  String   // e.g. "RCA-RCPT-000482"
-  pdfUrl         String   // Cloudinary URL
-  qrCodeData     String   // encoded verification payload
+  receiptNumber  String // e.g. "RCA-RCPT-000482"
+  pdfUrl         String // Cloudinary URL
+  qrCodeData     String // encoded verification payload
   issuedAt       DateTime @default(now())
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
@@ -383,19 +384,19 @@ model Receipt {
 // ============================================================
 
 model Project {
-  id             String   @id @default(cuid())
+  id             String        @id @default(cuid())
   organizationId String
   title          String
   description    String
-  budget         Int?     // minor units
-  raisedAmount   Int      @default(0)
+  budget         Int? // minor units
+  raisedAmount   Int           @default(0)
   status         ProjectStatus @default(PLANNING)
   startDate      DateTime?
   endDate        DateTime?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
 
-  organization  Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization  Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   contributions ProjectContribution[]
   milestones    ProjectMilestone[]
   payments      Payment[]
@@ -414,9 +415,9 @@ enum ProjectStatus {
 model ProjectMilestone {
   id          String    @id @default(cuid())
   projectId   String
-  title        String
-  dueDate      DateTime?
-  completedAt  DateTime?
+  title       String
+  dueDate     DateTime?
+  completedAt DateTime?
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
@@ -428,7 +429,7 @@ model ProjectContribution {
   id           String   @id @default(cuid())
   projectId    String
   membershipId String
-  amount       Int      // minor units
+  amount       Int // minor units
   createdAt    DateTime @default(now())
 
   project    Project    @relation(fields: [projectId], references: [id], onDelete: Restrict)
@@ -443,7 +444,7 @@ model ProjectContribution {
 // ============================================================
 
 model Event {
-  id             String   @id @default(cuid())
+  id             String    @id @default(cuid())
   organizationId String
   title          String
   description    String?
@@ -451,30 +452,58 @@ model Event {
   startsAt       DateTime
   endsAt         DateTime?
   capacity       Int?
-  ticketPrice    Int?     // minor units; null if free
-  isPublic       Boolean  @default(false)
-  qrCheckinCode  String   @unique // static code for this event's QR check-in
-  createdAt      DateTime @default(now())
+  ticketPrice    Int? // minor units; null if free
+  isPublic       Boolean   @default(false)
+  qrCheckinCode  String    @unique // static code for this event's QR check-in
+  createdAt      DateTime  @default(now())
 
   organization  Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   registrations EventRegistration[]
   attendance    Attendance[]
+  joinRequests  JoinRequest[]
 
   @@index([organizationId, startsAt])
   @@map("events")
 }
 
+model JoinRequest {
+  id               String            @id @default(cuid())
+  organizationId   String
+  eventId          String?
+  email            String?
+  firstName        String?
+  lastName         String?
+  phone            String?
+  message          String?
+  status           JoinRequestStatus @default(PENDING)
+  reviewedByUserId String?
+  reviewedAt       DateTime?
+  createdAt        DateTime          @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  event        Event?       @relation(fields: [eventId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, status])
+  @@map("join-requests")
+}
+
+enum JoinRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 model EventRegistration {
-  id           String   @id @default(cuid())
+  id           String     @id @default(cuid())
   eventId      String
   membershipId String
   status       RsvpStatus @default(REGISTERED)
-  createdAt    DateTime @default(now())
+  createdAt    DateTime   @default(now())
 
   // Added after testing
   // paymentId
-  paymentId     String?  @unique
-  payment      Payment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  paymentId String?  @unique
+  payment   Payment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
 
   event      Event      @relation(fields: [eventId], references: [id], onDelete: Cascade)
   membership Membership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
@@ -493,12 +522,12 @@ enum RsvpStatus {
 // Generic attendance — covers both event attendance and regular club
 // meeting attendance (Event relation optional for the latter).
 model Attendance {
-  id             String   @id @default(cuid())
+  id             String           @id @default(cuid())
   organizationId String
   membershipId   String
   eventId        String?
   method         AttendanceMethod @default(MANUAL)
-  checkedInAt    DateTime @default(now())
+  checkedInAt    DateTime         @default(now())
 
   membership Membership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
   event      Event?     @relation(fields: [eventId], references: [id], onDelete: SetNull)
@@ -539,8 +568,8 @@ model AuditLog {
   id             String   @id @default(cuid())
   organizationId String
   userId         String?
-  action         String   // e.g. "payment.approved", "member.role_changed"
-  entityType     String   // "Payment", "Membership", ...
+  action         String // e.g. "payment.approved", "member.role_changed"
+  entityType     String // "Payment", "Membership", ...
   entityId       String
   beforeData     Json?
   afterData      Json?

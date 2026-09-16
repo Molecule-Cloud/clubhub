@@ -16,6 +16,7 @@ export const PERMISSIONS = [
   { key: "announcements:send", description: "Send announcements to members" },
   { key: "reports:view", description: "View financial and membership reports" },
   { key: "organization:settings:manage", description: "Edit organization branding and settings" },
+  { key: "members:approve-requests", description: "Approve or reject join requests" },
 ] as const;
 
 export type PermissionKey = (typeof PERMISSIONS)[number]["key"];
@@ -36,6 +37,7 @@ export const DEFAULT_ROLE_TEMPLATES: { name: string; permissions: PermissionKey[
     permissions: [
       "members:invite",
       "members:manage",
+      "members:approve-requests",
       "events:manage",
       "attendance:manage",
       "announcements:send",
