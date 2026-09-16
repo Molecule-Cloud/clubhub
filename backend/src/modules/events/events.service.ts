@@ -12,6 +12,7 @@ interface CreateEventInput {
   endsAt?: string;
   capacity?: number;
   ticketPrice?: number;
+  isPublic?: boolean;
 }
 
 export async function createEvent(input: CreateEventInput) {
@@ -25,6 +26,7 @@ export async function createEvent(input: CreateEventInput) {
       capacity: input.capacity,
       ticketPrice: input.ticketPrice,
       qrCheckinCode: randomBytes(8).toString("hex"),
+      isPublic: input.isPublic ?? false,
     } as never, // organizationId injected by the tenant-scoping extension on create
   });
 }
@@ -107,6 +109,7 @@ export async function updateEvent(
     endsAt: string | null;
     capacity: number | null;
     ticketPrice: number | null;
+    isPublic: boolean;
   }>
 ) {
   const existing = await prisma.event.findFirst({ where: { id: eventId } });

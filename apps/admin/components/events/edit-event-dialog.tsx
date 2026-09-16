@@ -22,6 +22,7 @@ const eventSchema = z.object({
     endsAt: z.string().optional(),
     capacity: z.coerce.number().positive().optional().or(z.literal("")),
     ticketPrice: z.coerce.number().positive().optional().or(z.literal("")),
+    isPublic: z.boolean().optional(),
 });
 
 type EventFormValues = z.infer<typeof eventSchema>;
@@ -70,6 +71,7 @@ export function EditEventDialog({ event, onOpenChange}: EditEventDialogProps) {
             endsAt: event.endsAt ? toDateTimeLocalValue(event.endsAt) : "",
             capacity: event.capacity ?? "",
             ticketPrice: event.ticketPrice ? event.ticketPrice / 100 : "",
+            isPublic: event.isPublic ?? false,
         });
     }, [event, reset]);
 
@@ -87,6 +89,7 @@ export function EditEventDialog({ event, onOpenChange}: EditEventDialogProps) {
                     endsAt: values.endsAt ? new Date(values.endsAt).toISOString() : undefined,
                     capacity: values.capacity ? Number(values.capacity) : undefined,
                     ticketPrice: values.ticketPrice ? Math.round(Number(values.ticketPrice) * 100) : undefined,
+                    isPublic: values.isPublic ?? false,
                 },
             });
             toast({ title: "Event updated", variant: "success" });

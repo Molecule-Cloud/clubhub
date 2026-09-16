@@ -452,6 +452,7 @@ model Event {
   endsAt         DateTime?
   capacity       Int?
   ticketPrice    Int?     // minor units; null if free
+  isPublic       Boolean  @default(false)
   qrCheckinCode  String   @unique // static code for this event's QR check-in
   createdAt      DateTime @default(now())
 

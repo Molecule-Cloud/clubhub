@@ -20,6 +20,7 @@ const eventSchema = z.object({
   startsAt: z.string().min(1, "Choose a start date and time"),
   endsAt: z.string().optional(),
   capacity: z.coerce.number().positive().optional().or(z.literal("")),
+  isPublic: z.boolean().optional(),
   ticketPrice: z.coerce.number().positive().optional().or(z.literal("")),
 });
 type EventFormValues = z.infer<typeof eventSchema>;
@@ -51,6 +52,7 @@ export function CreateEventDialog() {
         // ticketPrice collected in whole GHS for admin convenience, same
         // pattern as the manual payment dialog — converted to pesewas here.
         ticketPrice: values.ticketPrice ? Math.round(Number(values.ticketPrice) * 100) : undefined,
+        isPublic: values.isPublic ?? false,
       });
       toast({ title: "Event created", variant: "success" });
       reset();

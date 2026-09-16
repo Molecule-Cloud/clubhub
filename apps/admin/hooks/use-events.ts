@@ -11,6 +11,7 @@ export interface ClubEvent {
   capacity: number | null;
   ticketPrice: number | null;
   spotsRemaining?: number | null;
+  isPublic: boolean;
   _count: { registrations: number; attendance?: number };
 }
 
@@ -34,6 +35,7 @@ interface CreateEventInput {
   endsAt?: string;
   capacity?: number;
   ticketPrice?: number;
+  isPublic?: boolean;
 }
 
 export function useEvents(filters: { upcoming?: boolean } = {}) {
