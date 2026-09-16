@@ -9,6 +9,7 @@ export const createEventSchema = z.object({
     endsAt: z.string().datetime().optional(),
     capacity: z.number().int().positive().optional(),
     ticketPrice: z.number().int().positive().optional(), // minor units; omit = free event
+    isPublic: z.boolean().optional(),
   }),
 });
 
@@ -22,6 +23,7 @@ export const updateEventSchema = z.object({
     endsAt: z.string().datetime().nullable().optional(),
     capacity: z.number().int().positive().nullable().optional(),
     ticketPrice: z.number().int().positive().nullable().optional(),
+    isPublic: z.boolean().optional(),
   }),
 });
 
