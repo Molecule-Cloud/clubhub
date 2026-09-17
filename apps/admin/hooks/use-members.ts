@@ -72,3 +72,10 @@ export function useRemoveMember() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["members"] }),
   });
 }
+
+export function useRoles() {
+  return useQuery({
+    queryKey: ["roles"],
+    queryFn: () => api.get<Role[]>(`members/roles`)
+  });
+}
