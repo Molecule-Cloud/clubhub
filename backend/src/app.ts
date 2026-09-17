@@ -17,6 +17,7 @@ import announcementsRoutes from "./modules/announcements/announcements.routes";
 import reportsRoutes from "./modules/reports/reports.routes";
 import organizationsRoutes from "./modules/organizations/organizations.routes";
 import joinRequestsRoutes from "./modules/JoinRequests/joinRequests.routes";
+import publicRoutes from "./modules/public/public.routes"
 
 
 export function createApp() {
@@ -70,6 +71,7 @@ export function createApp() {
   app.use("/api/v1/reports", reportsRoutes);
   app.use("/api/v1/organizations", organizationsRoutes);
   app.use("/api/v1/join-requests", joinRequestsRoutes);
+  app.use("/api/v1/public", publicRoutes);
   
 
   // --- 404 for anything unmatched ---

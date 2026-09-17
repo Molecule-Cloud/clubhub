@@ -10,6 +10,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Logo } from "@/components/logo";
 import { HeroCarousel } from "@/components/hero-carousel";
+import { usePublicEvents } from "@/hooks/use-public-events";
+import { MapPin, CalendarDays } from "lucide-react";
 
 const features = [
   {
@@ -61,9 +63,19 @@ const footerLinks = {
   ],
 };
 
+function formatEventDate(iso: string) {
+  return new Intl.DateTimeFormat("en-GH",
+    {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+    }).format(new Date(iso));
+}
+
 export default function LandingPage() {
   const { user, isLoading } = useAuth();
   const router = useRouter();
+  const { data: publicEvents } = usePublicEvents();
 
   useEffect(() => {
     if (!isLoading && user) router.replace("/dashboard");
@@ -133,7 +145,48 @@ export default function LandingPage() {
           </Card>
         ))}
       </section>
-
+      
+      {!!publicEvents?.data.length && (
+        <section className="flex flex-col gap-8 px-6 py-16 sm:px-10">
+          <div className="flex flex-col items-center gap-2 text-center">
+            <h2 className="font-display text-2xl font-semibold sm:text-3xl">Upcoming events</h2>
+            <p className="text-muted-foreground">Public events from clubs and organizations on ClubHub.</p>
+          </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {publicEvents.data.map((event) => (
+              <Link key={event.id} href={`/events/${event.id}`}>
+                <Card className="h-full transition-shadow hover:shadow-md">
+                  <CardContent className="flex flex-col gap-3 p-5">
+                    <div className="flex items-center gap-2">
+                      {event.organization.logoUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={event.organization.logoUrl} alt="" className="h-6 w-6 rounded object-contain" />
+                      ) : null}
+                      <p className="text-xs font-medium text-muted-foreground">{event.organization.name}</p>
+                    </div>
+                    <p className="font-display font-semibold">{event.title}</p>
+                    <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                      <CalendarDays className="h-3.5 w-3.5" />
+                      {formatEventDate(event.startsAt)}
+                    </p>
+                    {event.location && (
+                      <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                        <MapPin className="h-3.5 w-3.5" />
+                        {event.location}
+                      </p>
+                    )}
+                    <Badge variant={event.ticketPrice ? "category" : "success"}>
+                      {event.ticketPrice ? `GHS ${(event.ticketPrice / 100).toFixed(2)}` : "Free"}
+                    </Badge>
+                  </CardContent>
+                </Card>
+              </Link>
+            ))}
+          </div>
+        </section>
+  )
+}
+      
       {/* Plans */}
       <section id="plans" className="flex flex-col items-center gap-8 px-6 py-20 sm:px-10">
         <div className="flex flex-col items-center gap-2 text-center">
@@ -184,7 +237,7 @@ export default function LandingPage() {
             </p>
             <div className="flex flex-col gap-1.5 text-sm text-muted-foreground">
               <span className="flex items-center gap-2">
-                <Mail className="h-3.5 w-3.5" /> hello@clubhub.africa
+                <Mail className="h-3.5 w-3.5" /> info@clubhub.ghana
               </span>
               <span className="flex items-center gap-2">
                 <MapPinIcon className="h-3.5 w-3.5" /> Accra, Ghana
@@ -206,7 +259,7 @@ export default function LandingPage() {
           </div>
         </div>
         <div className="mx-auto mt-10 max-w-6xl border-t border-border pt-6 text-center text-xs text-muted-foreground">
-          © {new Date().getFullYear()} ClubHub. All rights reserved.
+          © {new Date().getFullYear()} ClubHub - All rights reserved.
         </div>
       </footer>
     </div>
