@@ -5,5 +5,5 @@
 
 */
 -- AlterTable
-ALTER TABLE "join-requests" DROP COLUMN "phoneNumber",
+ALTER TABLE "join_requests" DROP COLUMN "phoneNumber",
 ADD COLUMN     "phone" TEXT;

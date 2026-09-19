@@ -14,16 +14,27 @@ function hashToken(raw: string) {
 }
 
 export async function listRoles() {
-  return prisma.role.findMany({
+  const ctx = getRequestContext();
+  if (!ctx.organizationId) throw ApiError.forbidden();
+  return withTenantRLS(ctx.organizationId, (tx) => tx.role.findMany({
     orderBy: { name: "asc" },
     select: {
       id: true,
       name: true,
       isDefault: true,
       _count: { select: { memberships: true } },
-      rolePermissions: { select: { permission: { select: { key: true, description: true } } } },
-    },
-  });
+      rolePermissions: {
+        select: {
+          permission: {
+            select: {
+              key: true,
+              description: true,
+            }
+          }
+        }
+      }
+    }
+  }))
 }
 
 export async function listPermissionCatalog() {
@@ -266,6 +277,8 @@ interface ListMembersFilters {
 /** Member directory — the tenant Prisma extension scopes this to the
  * caller's organization automatically; no manual organizationId needed. */
 export async function listMembers(filters: ListMembersFilters) {
+  const ctx = getRequestContext();
+  if (!ctx.organizationId) throw ApiError.forbidden();
   const where = {
     ...(filters.status ? { status: filters.status } : {}),
     ...(filters.roleId ? { roleId: filters.roleId } : {}),
@@ -282,9 +295,9 @@ export async function listMembers(filters: ListMembersFilters) {
       : {}),
   };
 
-  const [total, members] = await Promise.all([
-    prisma.membership.count({ where }),
-    prisma.membership.findMany({
+  const [total, members] = await withTenantRLS(ctx.organizationId, (tx) => Promise.all([
+    tx.membership.count({ where }),
+    tx.membership.findMany({
       where,
       skip: (filters.page - 1) * filters.pageSize,
       take: filters.pageSize,
@@ -294,7 +307,8 @@ export async function listMembers(filters: ListMembersFilters) {
         role: { select: { id: true, name: true } },
       },
     }),
-  ]);
+  ])
+  );
 
   return {
     members,
