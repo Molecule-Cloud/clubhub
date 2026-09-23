@@ -470,9 +470,9 @@ model JoinRequest {
   id               String            @id @default(cuid())
   organizationId   String
   eventId          String?
-  email            String?
-  firstName        String?
-  lastName         String?
+  email            String
+  firstName        String
+  lastName         String
   phone            String?
   message          String?
   status           JoinRequestStatus @default(PENDING)
@@ -484,7 +484,7 @@ model JoinRequest {
   event        Event?       @relation(fields: [eventId], references: [id], onDelete: SetNull)
 
   @@index([organizationId, status])
-  @@map("join-requests")
+  @@map("join_requests")
 }
 
 enum JoinRequestStatus {

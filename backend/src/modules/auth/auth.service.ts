@@ -7,6 +7,7 @@ import { DEFAULT_ROLE_TEMPLATES, PERMISSIONS } from "../../constants/permissions
 import { issueOtp, verifyOtp } from "./otp.service";
 import { issueRefreshTokenFamily, rotateRefreshToken, revokeRefreshToken, signAccessToken } from "./token.service";
 import type { LoginInput, RegisterOrganizationInput } from "./auth.validation";
+import { withTenantRLS } from "@/lib/withTenantRLS";
 
 function slugify(name: string): string {
   return name
@@ -70,6 +71,9 @@ export async function registerOrganization(input: RegisterOrganizationInput) {
         contactPhone: input.organization.contactPhone,
       },
     });
+
+    // Tenant Scoped tables unser RLS require app.current.org_it to be ser for inserts
+  await tx.$executeRaw`SELECT set_config('app.current_org_id', ${organization.id}, true)`
 
     // 3. Seed default roles + their permission grants for this organization.
     const roleIdByName = new Map<string, string>();
@@ -167,8 +171,10 @@ export async function login(input: LoginInput) {
     throw ApiError.forbidden("Please verify your email before logging in.");
   }
 
-  const membership = await prisma.membership.findUnique({
-    where: { organizationId_userId: { organizationId: organization.id, userId: user.id } },
+  const membership = await withTenantRLS(organization.id, async (tx) => {
+    return tx.membership.findUnique({
+      where: { organizationId_userId: { organizationId: organization.id, userId: user.id } },
+    });
   });
   if (!membership || membership.status !== "ACTIVE") {
     throw ApiError.forbidden("You do not have active access to this organization.");

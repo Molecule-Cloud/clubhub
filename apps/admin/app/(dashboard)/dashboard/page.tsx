@@ -78,7 +78,7 @@ export default function DashboardHomePage() {
             <div className="flex h-64 items-center justify-center text-sm text-muted-foreground">Loading…</div>
           ) : chartData.length === 0 ? (
             <div className="flex h-64 items-center justify-center text-sm text-muted-foreground">
-              No payments recorded yet — revenue will appear here once dues or donations start coming in.
+              No payments recorded yet. Revenue will appear here once dues or donations start coming in.
             </div>
           ) : (
             <ResponsiveContainer width="100%" height={280}>

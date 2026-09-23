@@ -76,6 +76,6 @@ export function useRemoveMember() {
 export function useRoles() {
   return useQuery({
     queryKey: ["roles"],
-    queryFn: () => api.get<Role[]>(`members/roles`)
+    queryFn: () => api.get<Role[]>(`/members/roles`)
   });
 }

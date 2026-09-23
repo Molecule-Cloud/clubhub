@@ -34,18 +34,33 @@ export async function createJoinRequest(
     throw ApiError.conflict("A join request is already pending for this email.");
   }
 
-  return prisma.joinRequest.create({
-    data: {
-      organizationId,
-      eventId: input.eventId,
-      email: input.email,
-      firstName: input.firstName,
-      lastName: input.lastName,
-      phone: input.phone,
-      message: input.message,
-    },
+  //   return prisma.joinRequest.create({
+  //     data: {
+  //       organizationId,
+  //       eventId: input.eventId,
+  //       email: input.email,
+  //       firstName: input.firstName,
+  //       lastName: input.lastName,
+  //       phone: input.phone,
+  //       message: input.message,
+  //     },
+  //   });
+  // }
+  return prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT set_config('app.current_org_id', ${organizationId}, true)`;
+    return tx.joinRequest.create({
+      data: {
+        organizationId,
+        eventId: input.eventId,
+        email: input.email,
+        firstName: input.firstName,
+        lastName: input.lastName,
+        phone: input.phone,
+        message: input.message,
+      },
+    });
   });
-}
+}  
 
 interface ListJoinRequestsFilters {
   status?: "PENDING" | "APPROVED" | "REJECTED";

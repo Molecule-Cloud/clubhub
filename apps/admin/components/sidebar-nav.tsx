@@ -18,7 +18,7 @@ import { cn } from "@/lib/utils";
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/dashboard/members", label: "Members", icon: Users },
-  { href: "/dashboard/members/join-requests", label: "Join Requests", icon: UserCheck }
+  { href: "/dashboard/members/join-requests", label: "Join Requests", icon: UserCheck },
   { href: "/dashboard/payments", label: "Payments", icon: Wallet },
   { href: "/dashboard/events", label: "Events", icon: CalendarDays },
   { href: "/dashboard/projects", label: "Projects", icon: FolderKanban },
@@ -33,6 +33,7 @@ export function SidebarNav() {
   // Pick the singlle most specifiv matching href, so a nested route like
   // // /dashboard/members/jon-requests only lights up its own
   // //nav item  not also the parent Members entry it happens to be
+  // 
   const activeHref = NAV_ITEMS
     .filter((item) => pathname === item.href || (item.href !== "/dashboard" && pathname?.startsWith(item.href)))
     .sort((a, b) => b.href.length - a.href.length)[0]?.href;
