@@ -62,9 +62,19 @@ const footerLinks = {
   ],
 };
 
+function formatEventDate(iso: string) {
+  return new Intl.DateTimeFormat("en-GH",
+    {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+    }).format(new Date(iso));
+}
+
 export default function LandingPage() {
   const { user, isLoading } = useAuth();
   const router = useRouter();
+  const { data: publicEvents } = usePublicEvents();
 
   useEffect(() => {
     if (!isLoading && user) router.replace("/dashboard");
@@ -294,7 +304,7 @@ export default function LandingPage() {
             </p>
             <div className="flex flex-col gap-1.5 text-sm text-muted-foreground">
               <span className="flex items-center gap-2">
-                <Mail className="h-3.5 w-3.5" /> hello@clubhub.africa
+                <Mail className="h-3.5 w-3.5" /> info@clubhub.ghana
               </span>
               <span className="flex items-center gap-2">
                 <MapPinIcon className="h-3.5 w-3.5" /> Accra, Ghana
@@ -316,7 +326,7 @@ export default function LandingPage() {
           </div>
         </div>
         <div className="mx-auto mt-10 max-w-6xl border-t border-border pt-6 text-center text-xs text-muted-foreground">
-          © {new Date().getFullYear()} ClubHub. All rights reserved.
+          © {new Date().getFullYear()} ClubHub - All rights reserved.
         </div>
       </footer>
     </div>
