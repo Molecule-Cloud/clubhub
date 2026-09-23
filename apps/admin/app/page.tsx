@@ -74,7 +74,6 @@ function formatEventDate(iso: string) {
 export default function LandingPage() {
   const { user, isLoading } = useAuth();
   const router = useRouter();
-  const { data: publicEvents } = usePublicEvents();
 
   useEffect(() => {
     if (!isLoading && user) router.replace("/dashboard");
