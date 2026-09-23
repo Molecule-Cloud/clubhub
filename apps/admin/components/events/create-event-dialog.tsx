@@ -114,6 +114,15 @@ export function CreateEventDialog() {
             </div>
           </div>
 
+          // Display on public landing page.
+          <div className="flex items-center gap-2">
+            <input type="checkbox"
+              id="event-is-public"
+              {...register("isPublic")}
+            />
+            <Label htmlFor="event-is-public">Display on public landing page</Label>
+          </div>
+
           <DialogFooter>
             <Button type="submit" disabled={isSubmitting}>
               {isSubmitting ? "Creating…" : "Create event"}

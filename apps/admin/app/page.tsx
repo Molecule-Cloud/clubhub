@@ -10,8 +10,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Logo } from "@/components/logo";
 import { HeroCarousel } from "@/components/hero-carousel";
-import { usePublicEvents } from "@/hooks/use-public-events";
-import { MapPin, CalendarDays } from "lucide-react";
+import { EventsCarousel } from "@/components/events-carousel";
 
 const features = [
   {
@@ -63,19 +62,9 @@ const footerLinks = {
   ],
 };
 
-function formatEventDate(iso: string) {
-  return new Intl.DateTimeFormat("en-GH",
-    {
-      weekday: "short",
-      month: "short",
-      day: "numeric",
-    }).format(new Date(iso));
-}
-
 export default function LandingPage() {
   const { user, isLoading } = useAuth();
   const router = useRouter();
-  const { data: publicEvents } = usePublicEvents();
 
   useEffect(() => {
     if (!isLoading && user) router.replace("/dashboard");
@@ -131,10 +120,15 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* Public events — horizontal carousel, right beneath the hero. Renders
+          nothing if no orgs currently have public events, so the page never
+          shows an awkward empty section. */}
+      <EventsCarousel />
+
       {/* Features */}
       <section id="features" className="grid grid-cols-1 gap-4 px-6 py-16 sm:grid-cols-2 sm:px-10 lg:grid-cols-4">
         {features.map((f) => (
-          <Card key={f.title}>
+          <Card key={f.title} className="transition-shadow duration-200 hover:shadow-md">
             <CardContent className="flex flex-col gap-3 p-5">
               <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${f.color}`}>
                 <f.icon className="h-5 w-5" />
@@ -145,48 +139,94 @@ export default function LandingPage() {
           </Card>
         ))}
       </section>
-      
-      {!!publicEvents?.data.length && (
-        <section className="flex flex-col gap-8 px-6 py-16 sm:px-10">
-          <div className="flex flex-col items-center gap-2 text-center">
-            <h2 className="font-display text-2xl font-semibold sm:text-3xl">Upcoming events</h2>
-            <p className="text-muted-foreground">Public events from clubs and organizations on ClubHub.</p>
+
+      {/* Two-sided value section: bold headline + copy on one side, a
+          self-contained on-brand "dashboard preview" mockup on the other
+          (built with existing icons/tokens — no external image asset). */}
+      <section className="grid grid-cols-1 items-center gap-10 px-6 py-20 sm:px-10 lg:grid-cols-2 lg:gap-16">
+        <div className="flex flex-col gap-5">
+          <Badge variant="info" className="w-fit">Why clubs switch to ClubHub</Badge>
+          <h2 className="font-display text-3xl font-semibold leading-tight sm:text-4xl">
+            Stop running your club out of spreadsheets and group chats.
+          </h2>
+          <p className="text-muted-foreground">
+            Members, dues, events, and projects scattered across WhatsApp, Excel, and someone's
+            notebook is how things get missed. ClubHub brings it into one place your whole
+            committee can actually rely on, whatever role you hold.
+          </p>
+          <ul className="flex flex-col gap-3 text-sm">
+            <li className="flex items-start gap-2">
+              <Check className="mt-0.5 h-4 w-4 shrink-0 text-node-emerald" />
+              Know exactly who's paid dues and who hasn't, in real time
+            </li>
+            <li className="flex items-start gap-2">
+              <Check className="mt-0.5 h-4 w-4 shrink-0 text-node-emerald" />
+              Every member gets a digital card and a QR check-in at events
+            </li>
+            <li className="flex items-start gap-2">
+              <Check className="mt-0.5 h-4 w-4 shrink-0 text-node-emerald" />
+              Built for the way clubs actually run. Rotary, Rotaract, Churches, Alumni bodies, and more...
+            </li>
+          </ul>
+          <div>
+            <Link href="/signup">
+              <Button size="lg" className="gap-2">
+                Start free
+                <ArrowRight className="h-4 w-4" />
+              </Button>
+            </Link>
           </div>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {publicEvents.data.map((event) => (
-              <Link key={event.id} href={`/events/${event.id}`}>
-                <Card className="h-full transition-shadow hover:shadow-md">
-                  <CardContent className="flex flex-col gap-3 p-5">
-                    <div className="flex items-center gap-2">
-                      {event.organization.logoUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={event.organization.logoUrl} alt="" className="h-6 w-6 rounded object-contain" />
-                      ) : null}
-                      <p className="text-xs font-medium text-muted-foreground">{event.organization.name}</p>
-                    </div>
-                    <p className="font-display font-semibold">{event.title}</p>
-                    <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                      <CalendarDays className="h-3.5 w-3.5" />
-                      {formatEventDate(event.startsAt)}
-                    </p>
-                    {event.location && (
-                      <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                        <MapPin className="h-3.5 w-3.5" />
-                        {event.location}
-                      </p>
-                    )}
-                    <Badge variant={event.ticketPrice ? "category" : "success"}>
-                      {event.ticketPrice ? `GHS ${(event.ticketPrice / 100).toFixed(2)}` : "Free"}
-                    </Badge>
-                  </CardContent>
-                </Card>
-              </Link>
-            ))}
+        </div>
+
+        <div className="relative flex items-center justify-center">
+          <div className="pointer-events-none absolute inset-0 -z-10 rounded-3xl bg-brand-gradient opacity-20 blur-3xl" />
+          <div className="glass w-full max-w-md rounded-2xl border border-border/60 p-6 shadow-xl">
+            <div className="flex items-center gap-2 border-b border-border pb-4">
+              <Logo className="h-6 w-6" />
+              <span className="font-display text-sm font-semibold">Rotary Club of Accra</span>
+            </div>
+            <div className="flex flex-col gap-3 pt-4">
+              <div className="flex items-center justify-between rounded-lg bg-secondary/60 p-3">
+                <div className="flex items-center gap-2">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-node-emerald/10 text-node-emerald">
+                    <CreditCard className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium">Dues collected</p>
+                    <p className="text-[10px] text-muted-foreground">This month</p>
+                  </div>
+                </div>
+                <p className="font-mono text-sm font-semibold">GHS 4,250</p>
+              </div>
+              <div className="flex items-center justify-between rounded-lg bg-secondary/60 p-3">
+                <div className="flex items-center gap-2">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-node-cyan/10 text-node-cyan">
+                    <Users className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium">Active members</p>
+                    <p className="text-[10px] text-muted-foreground">+3 this week</p>
+                  </div>
+                </div>
+                <p className="font-mono text-sm font-semibold">128</p>
+              </div>
+              <div className="flex items-center justify-between rounded-lg bg-secondary/60 p-3">
+                <div className="flex items-center gap-2">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-node-violet/10 text-node-violet">
+                    <CalendarCheck className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium">Next event</p>
+                    <p className="text-[10px] text-muted-foreground">Sat, Feb 14</p>
+                  </div>
+                </div>
+                <p className="text-xs font-medium text-node-violet">42 registered</p>
+              </div>
+            </div>
           </div>
-        </section>
-  )
-}
-      
+        </div>
+      </section>
+
       {/* Plans */}
       <section id="plans" className="flex flex-col items-center gap-8 px-6 py-20 sm:px-10">
         <div className="flex flex-col items-center gap-2 text-center">
@@ -224,6 +264,23 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* Closing CTA */}
+      <section className="px-6 py-16 sm:px-10">
+        <div className="glass mx-auto flex max-w-4xl flex-col items-center gap-4 rounded-3xl border border-border/60 px-8 py-12 text-center shadow-xl">
+          <h2 className="font-display text-2xl font-semibold sm:text-3xl">Bring your Club to the digital age.</h2>
+          <p className="max-w-lg text-muted-foreground">
+            Start on the free trial plan. No card required. Invite your committee, add your
+            first event, and see it click.
+          </p>
+          <Link href="/signup">
+            <Button size="lg" className="gap-2">
+              Get started free
+              <ArrowRight className="h-4 w-4" />
+            </Button>
+          </Link>
+        </div>
+      </section>
+
       {/* Footer */}
       <footer className="mt-auto border-t border-border bg-secondary/40 px-6 py-12 sm:px-10">
         <div className="mx-auto flex max-w-6xl flex-col gap-10 sm:flex-row sm:justify-between">
@@ -237,7 +294,7 @@ export default function LandingPage() {
             </p>
             <div className="flex flex-col gap-1.5 text-sm text-muted-foreground">
               <span className="flex items-center gap-2">
-                <Mail className="h-3.5 w-3.5" /> info@clubhub.ghana
+                <Mail className="h-3.5 w-3.5" /> hello@clubhub.africa
               </span>
               <span className="flex items-center gap-2">
                 <MapPinIcon className="h-3.5 w-3.5" /> Accra, Ghana
@@ -259,7 +316,7 @@ export default function LandingPage() {
           </div>
         </div>
         <div className="mx-auto mt-10 max-w-6xl border-t border-border pt-6 text-center text-xs text-muted-foreground">
-          © {new Date().getFullYear()} ClubHub - All rights reserved.
+          © {new Date().getFullYear()} ClubHub. All rights reserved.
         </div>
       </footer>
     </div>
